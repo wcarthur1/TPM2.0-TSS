@@ -1312,7 +1312,7 @@ void TestSapiApis()
 
     // NOTE: this test case is kind of bogus--no application would ever do this
     // since apps can't change the responseSize after TPM has returned the response.
-    // ONce the MALFOMED_RESPONSE occurs, there's no way to recover the response data.
+    // Once the MALFOMED_RESPONSE occurs, there's no way to recover the response data.
     rval = Tss2_Sys_GetTestResult_Complete( sysContext, &outData, &testResult );
     CheckFailed( rval, TSS2_SYS_RC_BAD_SEQUENCE ); // #66
 }
@@ -7143,6 +7143,7 @@ void TestLocalTCTI()
     TSS2_TCTI_DRIVER_INFO localTpmInterfaceInfo = { "local TPM", "", InitLocalTpmTcti, TeardownLocalTpmTcti };
     TSS2_TCTI_CONTEXT *downstreamTctiContext;
 
+    TpmClientPrintf( NO_PREFIX,  "\nLocal TCTI Tests:\n" );
     TpmClientPrintf( NO_PREFIX,  "WARNING!!  This test requires that a local TPM is present and that the resource manager has NOT been started.\n\n" );
        
     // Test TCTI interface against local TPM TCTI interface, if available.
@@ -7173,6 +7174,177 @@ void TestLocalTCTI()
     
 }
 #endif
+
+
+typedef struct {
+    TPM_CAP	capability;
+    UINT32 property;
+    char *capString;
+} CAPABILITY_TEST_SETUP;
+
+CAPABILITY_TEST_SETUP capabilityTestSetups[] =
+{
+    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << 24), "TPM_HT_TRANSIENT" },
+    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << 24), "TPM_HT_LOADED_SESSION" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_MIN, "TPM_PT_HR_TRANSIENT_MIN" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_MIN, "TPM_PT_HR_LOADED_MIN" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_ACTIVE_SESSIONS_MAX, "TPM_PT_ACTIVE_SESSIONS_MAX" }, 
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_CONTEXT_GAP_MAX, "TPM_PT_CONTEXT_GAP_MAX" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MEMORY, "TPM_PT_MEMORY" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MAX_SESSION_CONTEXT, "TPM_PT_MAX_SESSION_CONTEXT" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED, "TPM_PT_HR_LOADED" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_AVAIL, "TPM_PT_HR_LOADED_AVAIL" }, 
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE, "TPM_PT_HR_ACTIVE" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE_AVAIL, "TPM_PT_HR_ACTIVE_AVAIL" },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_AVAIL, "TPM_PT_HR_TRANSIENT_AVAIL" },
+};
+
+void GetCapabilityTest( SESSION *auditSession )
+{
+    unsigned int i, j;
+    TPMS_CAPABILITY_DATA capabilityData;
+    TPMI_YES_NO         moreData;
+
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    TSS2_SYS_CMD_AUTHS sessionsData;
+    TSS2_SYS_RSP_AUTHS sessionsDataOut;
+
+    TPMS_AUTH_COMMAND sessionData;
+    TPMS_AUTH_RESPONSE sessionDataOut;
+
+    TPMS_AUTH_COMMAND *sessionDataArray[1];
+    TPMS_AUTH_RESPONSE *sessionDataOutArray[1];
+    
+    sessionDataArray[0] = &sessionData;
+    sessionDataOutArray[0] = &sessionDataOut;
+
+    sessionsData.cmdAuths = &sessionDataArray[0];
+    sessionsDataOut.rspAuths = &sessionDataOutArray[0];
+
+    sessionsDataOut.rspAuthsCount = 1;
+
+	sessionsData.cmdAuthsCount = 1;
+    
+    // Init nonce.
+    sessionsData.cmdAuths[0]->nonce.t.size = 0;
+
+    // init hmac
+    sessionsData.cmdAuths[0]->hmac.t.size = 0;
+
+    if( auditSession )
+    {
+        // Init authHandle
+        sessionsData.cmdAuths[0]->sessionHandle = auditSession->sessionHandle;
+
+        // Set audit bit in session attributes
+        *( (UINT8 *)((void *)&sessionsData.cmdAuths[0]->sessionAttributes ) ) = 0;
+        sessionsData.cmdAuths[0]->sessionAttributes.audit = 1;
+        sessionsData.cmdAuths[0]->sessionAttributes.continueSession = 1;
+    }
+    
+    // Display properties.
+    TpmClientPrintf( NO_PREFIX,  "\nCapabilities:\n" );
+
+    for( i = 0; i < ( sizeof( capabilityTestSetups ) / sizeof( CAPABILITY_TEST_SETUP ) ); i++ )
+    {
+        if( auditSession )
+        {
+            // Roll nonces for command
+            RollNonces( auditSession, &sessionsData.cmdAuths[0]->nonce );
+
+            rval = Tss2_Sys_GetCapability_Prepare( sysContext,
+                    capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                    30 );
+
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                // Complete command authorization area, by computing
+                // HMAC and setting it in nvCmdAuths.
+                rval = ComputeCommandHmacs( sysContext,
+                        NO_HANDLE, NO_HANDLE, &sessionsData,
+                        TPM_RC_FAILURE );
+
+                if( rval == TSS2_RC_SUCCESS )
+                {
+                    rval = Tss2_Sys_GetCapability( sysContext, &sessionsData, 
+                            capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                            30, &moreData, &capabilityData, &sessionsDataOut );
+
+                    // Roll nonces for response
+                    RollNonces( auditSession, &sessionsDataOut.rspAuths[0]->nonce );
+
+                    if( rval == TPM_RC_SUCCESS )
+                    {
+                        // If the command was successful, check the
+                        // response HMAC to make sure that the
+                        // response was received correctly.
+                        rval = CheckResponseHMACs( sysContext, rval,
+                                &sessionsData, NO_HANDLE,
+                                NO_HANDLE, &sessionsDataOut );
+                    }
+                }
+            }
+        }
+        else
+        {
+            rval = Tss2_Sys_GetCapability( sysContext, 0, 
+                    capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                    30, &moreData, &capabilityData, 0 );
+        }
+
+        CheckPassed( rval );
+
+        // Display properties.
+        TpmClientPrintf( NO_PREFIX,  "\n\t%s:  ", capabilityTestSetups[i].capString );
+
+        if( capabilityTestSetups[i].capability == TPM_CAP_HANDLES )
+        {
+            for( j = 0; j < capabilityData.data.handles.count; j++  )
+            {
+                TpmClientPrintf( NO_PREFIX,  "%8.8x%s", capabilityData.data.handles.handle[j], j == ( capabilityData.data.tpmProperties.count - 1 ) ? "" : ", "  );
+            }
+        }
+        else
+        {
+            for( j = 0; j < capabilityData.data.tpmProperties.count; j++  )
+            {
+                TpmClientPrintf( NO_PREFIX,  "%8.8x", capabilityData.data.tpmProperties.tpmProperty[j] );
+                TpmClientPrintf( NO_PREFIX,  "%s", ( j == ( capabilityData.data.tpmProperties.count - 1 ) ) ? "" : ", "  );
+            }
+        }
+        TpmClientPrintf( NO_PREFIX,  "\n" );
+    }
+}
+
+void GetCapabilityTests()
+{
+    SESSION *auditSession;
+    TPM2B_NONCE nonceCaller;
+    TPMT_SYM_DEF symmetric;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    TpmClientPrintf( NO_PREFIX,  "\nGetCapability Tests:\n" );
+    
+    // Create audit session.
+    symmetric.algorithm = TPM_ALG_NULL;
+    symmetric.keyBits.sym = 0;
+    symmetric.mode.sym = 0;
+    nonceCaller.t.size = 0;
+    rval = StartAuthSessionWithParams( &auditSession, TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256 );
+    CheckPassed( rval );
+    
+    GetCapabilityTest( 0 );
+
+    GetCapabilityTest( auditSession );
+
+    rval = Tss2_Sys_FlushContext( sysContext, auditSession->sessionHandle );
+    CheckPassed( rval );
+
+    rval = EndAuthSession( auditSession );
+    CheckPassed( rval );
+
+}
 
 void TpmTest()
 {
@@ -7234,6 +7406,8 @@ void TpmTest()
     // Clear DA lockout.
     TestDictionaryAttackLockReset();
 
+    GetCapabilityTests();
+    
     TestTpmSelftest();
 
     TestDictionaryAttackLockReset();

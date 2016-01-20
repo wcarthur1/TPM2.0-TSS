@@ -59,10 +59,17 @@ TPM_RC TpmCalcPHash( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE handle1, TPM_HANDL
     // Only get names for commands
     if( responseCode == TPM_RC_NO_RESPONSE )
     {
-        // Get names for the handles
-        rval = TpmHandleToName( handle1, &name1 );
-        if( rval != TPM_RC_SUCCESS )
-            return rval;
+        if( handle1 == NO_HANDLE )
+        {
+            name1.t.size = 0;
+        }
+        else
+        {
+            // Get names for the handles
+            rval = TpmHandleToName( handle1, &name1 );
+            if( rval != TPM_RC_SUCCESS )
+                return rval;
+        }
     }
 
 #ifdef DEBUG
@@ -79,9 +86,16 @@ TPM_RC TpmCalcPHash( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE handle1, TPM_HANDL
         if( rval != TPM_RC_SUCCESS )
             return rval;
 
-        rval = TpmHandleToName( handle2, &name2 );
-        if( rval != TPM_RC_SUCCESS )
-            return rval;
+        if( handle2 == NO_HANDLE )
+        {
+            name2.t.size = 0;
+        }
+        else
+        {
+            rval = TpmHandleToName( handle2, &name2 );
+            if( rval != TPM_RC_SUCCESS )
+                return rval;
+        }
     }
     else
     {

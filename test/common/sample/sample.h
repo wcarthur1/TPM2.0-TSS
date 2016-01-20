@@ -144,6 +144,8 @@ typedef struct{
     UINT8 nvNameChanged;
 } ENTITY;
 
+#define NO_HANDLE 0xff000000
+
 void InitEntities();
 TPM_RC AddEntity( TPM_HANDLE entityHandle, TPM2B_AUTH *auth );
 TPM_RC DeleteEntity( TPM_HANDLE entityHandle );
