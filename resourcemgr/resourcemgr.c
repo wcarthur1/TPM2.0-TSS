@@ -1,27 +1,27 @@
 //**********************************************************************;
 // Copyright (c) 2015, Intel Corporation
 // All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without 
+//
+// Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
-// 
-// 1. Redistributions of source code must retain the above copyright notice, 
+//
+// 1. Redistributions of source code must retain the above copyright notice,
 // this list of conditions and the following disclaimer.
-// 
-// 2. Redistributions in binary form must reproduce the above copyright notice, 
-// this list of conditions and the following disclaimer in the documentation 
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
 // and/or other materials provided with the distribution.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 // THE POSSIBILITY OF SUCH DAMAGE.
 //**********************************************************************;
 
@@ -612,6 +612,63 @@ endTestForLoadedHandles:
     
     return rval;
 }    
+
+TSS2_RC FlushAllLoadedHandles()
+{
+    TPMS_CAPABILITY_DATA capabilityData;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    TPMI_YES_NO moreData;
+    UINT32 i;
+
+    rval = Tss2_Sys_GetCapability( resMgrSysContext, 0,
+            TPM_CAP_HANDLES, TRANSIENT_FIRST,
+            20, &moreData, &capabilityData, 0 );
+    if( rval != TSS2_RC_SUCCESS )
+        goto endFlushAllLoadedHandles;
+
+    if( capabilityData.data.handles.count != 0 )
+    {
+        ResMgrPrintf( RM_PREFIX, "Flush loaded transient object handles: \n" );
+        ResMgrPrintf( RM_PREFIX, "" );
+        for( i = 0; i < capabilityData.data.handles.count; i++ )
+        {
+            ResMgrPrintf( NO_PREFIX, "0x%8x, ", capabilityData.data.handles.handle[i] );
+            rval = Tss2_Sys_FlushContext( resMgrSysContext, capabilityData.data.handles.handle[i] );
+            if( rval != TSS2_RC_SUCCESS )
+            {
+                SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+                goto endFlushAllLoadedHandles;
+            }
+        }
+        ResMgrPrintf( NO_PREFIX, "\n" );
+    }
+
+    rval = Tss2_Sys_GetCapability( resMgrSysContext, 0,
+            TPM_CAP_HANDLES, LOADED_SESSION_FIRST,
+            20, &moreData, &capabilityData, 0 );
+    if( rval != TSS2_RC_SUCCESS )
+        goto endFlushAllLoadedHandles;
+
+    if( capabilityData.data.handles.count != 0 )
+    {
+        ResMgrPrintf( RM_PREFIX, "Flush loaded session handles: \n" );
+        for( i = 0; i < capabilityData.data.handles.count; i++ )
+        {
+            ResMgrPrintf( NO_PREFIX, "0x%8x, ", capabilityData.data.handles.handle[i] );
+            rval = Tss2_Sys_FlushContext( resMgrSysContext, capabilityData.data.handles.handle[i] );
+            if( rval != TSS2_RC_SUCCESS )
+            {
+                SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+                goto endFlushAllLoadedHandles;
+            }
+        }
+        ResMgrPrintf( NO_PREFIX, "\n" );
+    }
+
+endFlushAllLoadedHandles:
+
+    return rval;
+}
 
 
 
@@ -2013,6 +2070,8 @@ returnFromResourceMgrReceiveTpmResponse:
     // If command was FlushContext, the entry was already removed from the list.  No eviction
     // necsssary or possible (because no entry exists for this object or sequence anymore).
     if( numHandles &&
+            !( currentCommandCode == TPM_CC_ContextSave &&
+                IsSessionHandle( cmdSavedHandle ) ) &&
             ( currentCommandCode != TPM_CC_FlushContext ) )
     {
         // Create array of handles.
@@ -2971,6 +3030,14 @@ int main(int argc, char* argv[])
     if( rval != TSS2_RC_SUCCESS )
     {
         printf( "Resource Mgr failed to initialize.  Exiting...\n" );
+        return( 1 );
+    }
+
+    // Flush all loaded handles
+    rval = FlushAllLoadedHandles();
+    if( rval != TSS2_RC_SUCCESS )
+    {
+        printf( "Resource Mgr failed to flush all loaded handles.  Exiting...\n" );
         return( 1 );
     }
 
