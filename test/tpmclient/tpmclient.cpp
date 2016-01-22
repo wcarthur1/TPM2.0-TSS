@@ -876,9 +876,7 @@ void TestTctiApis( TSS2_TCTI_CONTEXT *tstTctiContext, int againstRM )
 
     //
     // Test finalize for BAD REFERENCE error.
-    rval = ( (TSS2_TCTI_CONTEXT_COMMON_CURRENT *)tstTctiContext )->finalize( 0 );
-    CheckFailed( rval, TSS2_TCTI_RC_BAD_REFERENCE ); // #22
-
+    ( (TSS2_TCTI_CONTEXT_COMMON_CURRENT *)tstTctiContext )->finalize( 0 );
 
     //
     // Test Receive for too small a response buffer
@@ -6049,8 +6047,7 @@ void SysFinalizeTests()
 
     TpmClientPrintf( 0, "\nSYS FINALIZE TESTS:\n" );
 
-    rval = Tss2_Sys_Finalize( 0 );
-    CheckFailed( rval, TSS2_SYS_RC_BAD_REFERENCE );
+    Tss2_Sys_Finalize( 0 );
 
     // Note:  other cases tested by other tests.
 }
@@ -6547,9 +6544,9 @@ void GetSetEncryptParamTests()
     CheckFailed( rval, TSS2_SYS_RC_BAD_SIZE ); // #20
     encryptParamSize += 2;
 
-    // Size too large...should pass, but doesn't.
+    // Size too large...
     rval = Tss2_Sys_SetEncryptParam( sysContext, encryptParamSize, encryptParamBuffer1 );
-    CheckPassed( rval ); // #21
+    CheckFailed( rval, TSS2_SYS_RC_BAD_SIZE ); // #20
 
     encryptParamSize--;
     rval = Tss2_Sys_SetEncryptParam( sysContext, encryptParamSize, encryptParamBuffer1 );
