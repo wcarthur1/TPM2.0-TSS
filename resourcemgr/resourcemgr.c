@@ -147,7 +147,7 @@ UINT8 simulator = 0;
 enum shutdownStartupSequenceType { TPM_RESET, TPM_RESTART, TPM_RESUME };
 
 TSS2_TCTI_CONTEXT *downstreamTctiContext = 0;
-TSS2_SYS_CONTEXT *resMgrSysContext;
+TSS2_SYS_CONTEXT *resMgrSysContext, *tempSysContext;
 
 TSS2_ABI_VERSION abiVersion = { TSSWG_INTEROP, TSS_SAPI_FIRST_FAMILY, TSS_SAPI_FIRST_LEVEL, TSS_SAPI_FIRST_VERSION };
 
@@ -1577,6 +1577,59 @@ UINT8 PersistentHandle( TPM_HANDLE handle )
         return 0;
 }
 
+TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size, UINT8 **currentPtr, TPM_RC *responseRval )
+{
+	UINT32 i;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
+    // This is the capability data received from the TPM.
+    TPMS_CAPABILITY_DATA	receivedCapabilityData;
+
+    // This is the capability data returned by the RM.  Could be different in size
+    // and/or content from what was received from the TPM if some of the capabilities were virtualized.
+
+    // NOTE:  following code does lots of strange things with internals of sys context structures.
+    // The reason for this is that the marshal/unmarshal functions were designed to optimize code
+    // size, ease of auto code-generation, etc, so they use the sys context for lots of bookkeeping.
+    // To avoid rewriting the marshal/unmarshal functions for capability data, we do lots of
+    // weird things here.  This structure is too complex to create macros like we did for TPMS_CONTEXT.
+      
+    // Copy info into tempSysContext.
+    for( i = 0; i < *response_size; i++ )
+    {
+        ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr[i] = response_buffer[i];
+    }
+    ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = (((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr ) + sizeof( TPM20_Header_Out );
+            
+    Unmarshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
+    if((( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval != TSS2_RC_SUCCESS )
+		return ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+    
+    // Go through returned capabilities and virtualize anything that needs to be virtualized.
+    // ??
+
+    // Reset nextData pointer.
+    ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = ((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr + sizeof( TPM20_Header_Out );
+    
+    Marshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
+    if((( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval != TSS2_RC_SUCCESS )
+		return ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+
+    // Adjust size of returned response if necessary and put into proper place in tempSysContext's response buffer.
+    // TBD:  *responseSize = ??;
+    (( TPM20_Header_Out *)( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr )->responseSize = CHANGE_ENDIAN_DWORD( *response_size );
+    
+    // Stick new capability data into returned response.
+    for( i = 0; i < *response_size; i++ )
+    {
+        response_buffer[i] = ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr[i];
+    }
+
+    rval = ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+
+    return rval;
+}
+
 TSS2_RC ResourceMgrReceiveTpmResponse(
     TSS2_TCTI_CONTEXT   *tctiContext,
     UINT32              *response_size,     /* out */
@@ -1821,6 +1874,14 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                             }
                         }
                     }
+                }
+                else if( currentCommandCode == TPM_CC_GetCapability && !( tag == TPM_ST_SESSIONS && sessionHandles[0].sessionAttributes.audit ) )
+                {
+                    // Virtualize the returned capabilities, if an audit session isn't being used for the command.
+                    responseRval = VirtualizeCapabilities( response_buffer, response_size, &currentPtr, &responseRval );
+
+                    if( responseRval != TSS2_RC_SUCCESS )
+                        goto returnFromResourceMgrReceiveTpmResponse;
                 }
                 else if( currentCommandCode == TPM_CC_ContextSave && IsSessionHandle( cmdSavedHandle ) )
                 {
@@ -3025,6 +3086,14 @@ int main(int argc, char* argv[])
         goto initDone;
     }
     
+    // Init sysContext for use by marshalling and unmarshalling functions in RM.
+    tempSysContext = InitSysContext( 0, downstreamTctiContext, &abiVersion );
+    if( tempSysContext == 0 )
+    {
+        InitSysContextFailure();
+        goto initDone;
+    }
+    
     rval = InitResourceMgr( DBG_COMMAND_RM_TABLES );
     CloseOutFile( &outFp );
     if( rval != TSS2_RC_SUCCESS )
@@ -3086,7 +3155,9 @@ int main(int argc, char* argv[])
     CloseSockets( appOtherSock, appTpmSock );
     
     TeardownSysContext( &resMgrSysContext );
-    
+
+    TeardownSysContext( &tempSysContext );
+        
 initDone:
 
     return 0;

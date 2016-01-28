@@ -1,27 +1,27 @@
 //**********************************************************************;
 // Copyright (c) 2015, Intel Corporation
 // All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
+// 
+// Redistribution and use in source and binary forms, with or without 
 // modification, are permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice,
+// 
+// 1. Redistributions of source code must retain the above copyright notice, 
 // this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice,
-// this list of conditions and the following disclaimer in the documentation
+// 
+// 2. Redistributions in binary form must reproduce the above copyright notice, 
+// this list of conditions and the following disclaimer in the documentation 
 // and/or other materials provided with the distribution.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
 // THE POSSIBILITY OF SUCH DAMAGE.
 //**********************************************************************;
 
@@ -1092,32 +1092,32 @@ typedef	struct {
 	TPM2B_DIGEST	digest;	 /* This shall be the HMAC produced using a proof value of hierarchy.  */
 } TPMT_TK_HASHCHECK;
 
-/* Table 92  Definition of TPMS_ALG_PROPERTY Structure <OUT> */
+/* Table 92  Definition of TPMS_ALG_PROPERTY Structure <INOUT> */
 typedef	struct {
 	TPM_ALG_ID	alg;	 /* an algorithm identifier  */
 	TPMA_ALGORITHM	algProperties;	 /* the attributes of the algorithm  */
 } TPMS_ALG_PROPERTY;
 
-/* Table 93  Definition of TPMS_TAGGED_PROPERTY Structure <OUT> */
+/* Table 93  Definition of TPMS_TAGGED_PROPERTY Structure <INOUT> */
 typedef	struct {
 	TPM_PT	property;	 /* a property identifier  */
 	UINT32	value;	 /* the value of the property  */
 } TPMS_TAGGED_PROPERTY;
 
-/* Table 94  Definition of TPMS_TAGGED_PCR_SELECT Structure <OUT> */
+/* Table 94  Definition of TPMS_TAGGED_PCR_SELECT Structure <INOUT> */
 typedef	struct {
 	TPM_PT_PCR	tag;	 /* the property identifier  */
 	UINT8	sizeofSelect;	 /* the size in octets of the pcrSelect array  */
 	BYTE	pcrSelect[PCR_SELECT_MAX];	 /* the bit map of PCR with the identified property  */
 } TPMS_TAGGED_PCR_SELECT;
 
-/* Table 95  Definition of TPML_CC Structure */
+/* Table 95  Definition of TPML_CC Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of commands in the commandCode list may be 0  */
 	TPM_CC	commandCodes[MAX_CAP_CC];	 /* a list of command codesThe maximum only applies to a command code list in a command. The response size is limited only by the size of the parameter buffer.  */
 } TPML_CC;
 
-/* Table 96  Definition of TPML_CCA Structure <OUT> */
+/* Table 96  Definition of TPML_CCA Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of values in the commandAttributes list may be 0  */
 	TPMA_CC	commandAttributes[MAX_CAP_CC];	 /* a list of command codes attributes  */
@@ -1129,7 +1129,7 @@ typedef	struct {
 	TPM_ALG_ID	algorithms[MAX_ALG_LIST_SIZE];	 /* a list of algorithm IDsThe maximum only applies to an algorithm list in a command. The response size is limited only by the size of the parameter buffer.  */
 } TPML_ALG;
 
-/* Table 98  Definition of TPML_HANDLE Structure <OUT> */
+/* Table 98  Definition of TPML_HANDLE Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* the number of handles in the listmay have a value of 0  */
 	TPM_HANDLE	handle[MAX_CAP_HANDLES];	 /* an array of handles  */
@@ -1156,31 +1156,31 @@ typedef	struct {
 	TPMS_PCR_SELECTION	pcrSelections[HASH_COUNT];	 /* list of selections  */
 } TPML_PCR_SELECTION;
 
-/* Table 103  Definition of TPML_ALG_PROPERTY Structure <OUT> */
+/* Table 103  Definition of TPML_ALG_PROPERTY Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of algorithm properties structuresA value of zero is allowed.  */
 	TPMS_ALG_PROPERTY	algProperties[MAX_CAP_ALGS];	 /* list of properties  */
 } TPML_ALG_PROPERTY;
 
-/* Table 104  Definition of TPML_TAGGED_TPM_PROPERTY Structure <OUT> */
+/* Table 104  Definition of TPML_TAGGED_TPM_PROPERTY Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of propertiesA value of zero is allowed.  */
 	TPMS_TAGGED_PROPERTY	tpmProperty[MAX_TPM_PROPERTIES];	 /* an array of tagged properties  */
 } TPML_TAGGED_TPM_PROPERTY;
 
-/* Table 105  Definition of TPML_TAGGED_PCR_PROPERTY Structure <OUT> */
+/* Table 105  Definition of TPML_TAGGED_PCR_PROPERTY Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of propertiesA value of zero is allowed.  */
 	TPMS_TAGGED_PCR_SELECT	pcrProperty[MAX_PCR_PROPERTIES];	 /* a tagged PCR selection  */
 } TPML_TAGGED_PCR_PROPERTY;
 
-/* Table 106  Definition of ECC TPML_ECC_CURVE Structure <OUT> */
+/* Table 106  Definition of ECC TPML_ECC_CURVE Structure <INOUT> */
 typedef	struct {
 	UINT32	count;	 /* number of curvesA value of zero is allowed.  */
 	TPM_ECC_CURVE	eccCurves[MAX_ECC_CURVES];	 /* array of ECC curve identifiers  */
 } TPML_ECC_CURVE;
 
-/* Table 107  Definition of TPMU_CAPABILITIES Union <OUT> */
+/* Table 107  Definition of TPMU_CAPABILITIES Union <INOUT> */
 typedef	union {
 	TPML_ALG_PROPERTY	algorithms;	 /*   */
 	TPML_HANDLE	handles;	 /*   */
@@ -1193,7 +1193,7 @@ typedef	union {
 	TPML_ECC_CURVE	eccCurves;	 /* TPM_ALG_ECC  */
 } TPMU_CAPABILITIES;
 
-/* Table 108  Definition of TPMS_CAPABILITY_DATA Structure <OUT> */
+/* Table 108  Definition of TPMS_CAPABILITY_DATA Structure <INOUT> */
 typedef	struct {
 	TPM_CAP	capability;	 /* the capability  */
 	TPMU_CAPABILITIES	data;	 /* the capability data  */
