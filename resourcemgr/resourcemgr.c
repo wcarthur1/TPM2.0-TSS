@@ -729,6 +729,48 @@ TSS2_RC RemoveEntry(RESOURCE_MANAGER_ENTRY *entry)
 
 enum findType{ RMFIND_VIRTUAL_HANDLE, RMFIND_REAL_HANDLE, RMFIND_PARENT_HANDLE, RMFIND_HIERARCHY, RMFIND_SESSION_SEQUENCE_NUMBER };
 
+
+//
+//  firstEntry is the starting point of the search
+//	field is the field in the entry that has to match and
+//    is one of:  RMFIND_VIRTUAL_HANDLE, RMFIND_REAL_HANDLE,
+//    RMFIND_PARENT_HANDLE, RMFIND_HIERARCHY
+// 	matchSpec is the value that has to match the field.
+//    foundEntry is pointer to first found matching entry
+//
+TSS2_RC FindEntryHandleType(RESOURCE_MANAGER_ENTRY *firstEntry,
+    enum findType type, TPM_HANDLE handleType, RESOURCE_MANAGER_ENTRY **foundEntryPtr)
+{
+    UINT8 foundEntry = 0;
+    
+    for( *foundEntryPtr = entryList; *foundEntryPtr != 0; *foundEntryPtr = (*foundEntryPtr)->nextEntry )
+    {
+        if( type == RMFIND_VIRTUAL_HANDLE )
+        {
+            if( ( handleType & (*foundEntryPtr)->virtualHandle ) != 0 )
+            {
+                foundEntry = 1;
+                break;
+            }
+        }
+        else if( type == RMFIND_REAL_HANDLE )
+        {
+            if( ( handleType & (*foundEntryPtr)->realHandle ) != 0 )
+            {
+                foundEntry = 1;
+                break;
+            }
+        }
+        else
+            return TSS2_RESMGR_BAD_FINDFIELD;
+    }
+
+    if( foundEntry == 0 )
+        return TSS2_RESMGR_FIND_FAILED;
+    else
+        return TSS2_RC_SUCCESS;
+}
+
 //
 //  firstEntry is the starting point of the search
 //	field is the field in the entry that has to match and
@@ -1577,6 +1619,92 @@ UINT8 PersistentHandle( TPM_HANDLE handle )
         return 0;
 }
 
+TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_HANDLE handleType, UINT64 connectionId )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
+    int i = 0;
+    
+    if( receivedCapabilityData->data.handles.count != 0 )
+    {
+        if( ( receivedCapabilityData->data.handles.handle[0] & handleType ) != 0 )
+        {
+            // Need to virtualize transient objects
+            while( nextEntry )
+            {
+                rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, handleType, &foundEntryPtr);
+                if( rval == TSS2_RC_SUCCESS )
+                {
+                    if( foundEntryPtr->connectionId == connectionId )
+                    {
+                        nextEntry = foundEntryPtr->nextEntry;
+                        receivedCapabillityData->data.handles.handle[i++] = foundEntryPtr->virtualHandle;
+                    }
+                }
+                else
+                    break;
+            }
+            receivedCapabilityData->data.handles.count = i;
+        }
+    }
+
+    return rval;
+}
+
+TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UINT64 connectionId )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
+    int i = 0;
+    
+    if( receivedCapabilityData->capability == TPM_CAP_HANDLES )
+    {
+        rval = VirtualizeCapHandles( receivedCapabilityData, TPM_HT_TRANSIENT << 24, connectionId );
+    }
+    else if( receivedCapabilityData->capability == TPM_CAP_TPM_PROPERTIES )
+    {
+        for( i = 0; i < receivedCapabilityData->data.tpmProperties.count; i++ )
+        {
+            switch( receivedCapabilityData->data.tpmProperties.tpmProperty[i].property )
+            {
+                case TPM_PT_HR_TRANSIENT_MIN:
+                    newValue = ?;
+                    break;
+                case TPM_PT_HR_LOADED_MIN:
+                    newValue = ?;
+                    break;
+                case TPM_PT_ACTIVE_SESSIONS_MAX:
+                    newValue = ?;
+                    break;
+                case TPM_PT_CONTEXT_GAP_MAX:
+                    newValue = ?;
+                    break;
+                case TPM_PT_MEMORY:
+                    newValue = ?;
+                    break;
+                case TPM_PT_MAX_SESSION_CONTEXT:
+                    newValue = ?;
+                    break;
+                case TPM_PT_HR_LOADED:
+                    newValue = ?;
+                    break;
+                case TPM_PT_HR_ACTIVE:
+                    newValue = ?;
+                    break;
+                case TPM_PT_HR_ACTIVE_AVAIL:
+                    newValue = ?;
+                    break;
+                case TPM_PT_HR_TRANSIENT_AVAIL:
+                    newValue = ?;
+                    break;
+            }
+            receivedCapabilityData->data.tpmProperties.tpmProperty[i].value = newValue;
+        }
+    }
+    
+    return rval;
+}
+
 TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size, UINT8 **currentPtr, TPM_RC *responseRval )
 {
 	UINT32 i;
@@ -1602,18 +1730,22 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
     ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = (((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr ) + sizeof( TPM20_Header_Out );
             
     Unmarshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
-    if((( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval != TSS2_RC_SUCCESS )
-		return ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+    rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
+    if( rval != TSS2_RC_SUCCESS )
+		goto exitVirtualizeCapabilities;
     
     // Go through returned capabilities and virtualize anything that needs to be virtualized.
-    // ??
-
+    rval = VirtualizeCapStructure( &receivedCapabilityData, cmdConnectionId );
+    if( rval != TSS2_RC_SUCCESS )
+        goto exitVirtualizeCapabilities;
+    
     // Reset nextData pointer.
     ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = ((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr + sizeof( TPM20_Header_Out );
     
     Marshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
-    if((( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval != TSS2_RC_SUCCESS )
-		return ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+    rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
+    if( rval != TSS2_RC_SUCCESS )
+        goto exitVirtualizeCapabilities;
 
     // Adjust size of returned response if necessary and put into proper place in tempSysContext's response buffer.
     // TBD:  *responseSize = ??;
@@ -1625,7 +1757,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
         response_buffer[i] = ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr[i];
     }
 
-    rval = ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval;
+exitVirtualizeCapabilities:
 
     return rval;
 }
