@@ -71,7 +71,7 @@
 #include "syscontext.h"
 #include "debug.h"
 #include "localtpm.h"
-
+#include "resourcemgr.h"
 //
 // TPM indices and sizes
 //
@@ -988,7 +988,7 @@ void TestSapiApis()
 	const uint8_t 		*rpBuffer;
 	const uint8_t 		goodRpBuffer[] = { 0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
                                            0x01, 0x00, 0x00, 0x01, 0x11, 0x00, 0x00, 0x00,
-										   0x40 };
+										   RM_ACTIVE_SESSIONS_MAX };
     TPMI_YES_NO         moreData;
     TPMS_CAPABILITY_DATA	capabilityData;
     int                 rpBufferError = 0;
@@ -7228,6 +7228,12 @@ void GetCapabilityTest( SESSION *auditSession )
     // init hmac
     sessionsData.cmdAuths[0]->hmac.t.size = 0;
 
+    // NEED TO:
+    // Do TPM2_StartAuthSession, TPM2_LoadContext, TPM2_SaveContext, TPM2_Flush, and clear of a
+    // session's continue bit from multiple connections to setup test for TPM_PT_HR_LOADED and
+    // TPM_PT_HR_ACTIVE.
+    //??
+    
     if( auditSession )
     {
         // Init authHandle
@@ -7305,7 +7311,7 @@ void GetCapabilityTest( SESSION *auditSession )
         {
             for( j = 0; j < capabilityData.data.tpmProperties.count; j++  )
             {
-                TpmClientPrintf( NO_PREFIX,  "%8.8x", capabilityData.data.tpmProperties.tpmProperty[j] );
+                TpmClientPrintf( NO_PREFIX,  "%8.8x/%8.8x", capabilityData.data.tpmProperties.tpmProperty[j].property, capabilityData.data.tpmProperties.tpmProperty[j].value );
                 TpmClientPrintf( NO_PREFIX,  "%s", ( j == ( capabilityData.data.tpmProperties.count - 1 ) ) ? "" : ", "  );
             }
         }
