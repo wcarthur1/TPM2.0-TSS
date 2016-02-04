@@ -7173,27 +7173,107 @@ void TestLocalTCTI()
 
 
 typedef struct {
-    TPM_CAP	capability;
     UINT32 property;
     char *capString;
+} CAPABILITY_TEST_STRING;
+
+CAPABILITY_TEST_STRING capabilityTestStrings[] =
+{
+    { (TPM_HT_TRANSIENT << 24), "TPM_HT_TRANSIENT" },
+    { (TPM_HT_LOADED_SESSION << 24), "TPM_HT_LOADED_SESSION" },
+    { TPM_PT_HR_TRANSIENT_MIN, "TPM_PT_HR_TRANSIENT_MIN" },
+    { TPM_PT_HR_LOADED_MIN, "TPM_PT_HR_LOADED_MIN" },
+    { TPM_PT_ACTIVE_SESSIONS_MAX, "TPM_PT_ACTIVE_SESSIONS_MAX" }, 
+    { TPM_PT_CONTEXT_GAP_MAX, "TPM_PT_CONTEXT_GAP_MAX" },
+    { TPM_PT_MEMORY, "TPM_PT_MEMORY" },
+    { TPM_PT_MAX_SESSION_CONTEXT, "TPM_PT_MAX_SESSION_CONTEXT" },
+    { TPM_PT_HR_LOADED, "TPM_PT_HR_LOADED" },
+    { TPM_PT_HR_LOADED_AVAIL, "TPM_PT_HR_LOADED_AVAIL" }, 
+    { TPM_PT_HR_ACTIVE, "TPM_PT_HR_ACTIVE" },
+    { TPM_PT_HR_ACTIVE_AVAIL, "TPM_PT_HR_ACTIVE_AVAIL" },
+    { TPM_PT_HR_TRANSIENT_AVAIL, "TPM_PT_HR_TRANSIENT_AVAIL" },
+};
+
+char *FindPropertyString( UINT32 property )
+{
+    static char propertyString[100];
+    int i;
+    
+    strcpy( &propertyString[0], "" );
+
+    for( i = 0; i < sizeof( capabilityTestStrings ) / sizeof( CAPABILITY_TEST_STRING ); i++ )
+    {
+        if( capabilityTestStrings[i].property == property )
+        {
+            strcpy( propertyString, capabilityTestStrings[i].capString );
+            break;
+        }
+    }
+    return &propertyString[0];
+}
+
+
+typedef struct {
+    TPM_CAP	capability;
+    UINT32 property;
 } CAPABILITY_TEST_SETUP;
 
 CAPABILITY_TEST_SETUP capabilityTestSetups[] =
 {
-    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << 24), "TPM_HT_TRANSIENT" },
-    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << 24), "TPM_HT_LOADED_SESSION" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_MIN, "TPM_PT_HR_TRANSIENT_MIN" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_MIN, "TPM_PT_HR_LOADED_MIN" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_ACTIVE_SESSIONS_MAX, "TPM_PT_ACTIVE_SESSIONS_MAX" }, 
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_CONTEXT_GAP_MAX, "TPM_PT_CONTEXT_GAP_MAX" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MEMORY, "TPM_PT_MEMORY" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MAX_SESSION_CONTEXT, "TPM_PT_MAX_SESSION_CONTEXT" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED, "TPM_PT_HR_LOADED" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_AVAIL, "TPM_PT_HR_LOADED_AVAIL" }, 
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE, "TPM_PT_HR_ACTIVE" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE_AVAIL, "TPM_PT_HR_ACTIVE_AVAIL" },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_AVAIL, "TPM_PT_HR_TRANSIENT_AVAIL" },
+    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << 24) },
+    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << 24) },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_MIN },
+#if 0  // Don't need these because we request a large number
+       // of properties from previous type.     
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_MIN },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_ACTIVE_SESSIONS_MAX }, 
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_CONTEXT_GAP_MAX },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MEMORY },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MAX_SESSION_CONTEXT },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_AVAIL }, 
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE_AVAIL },
+    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_AVAIL },
+#endif            
 };
+
+typedef struct {
+    UINT32 property;
+    UINT8  resultsArrayCount;
+    UINT32 *resultsArray;
+} CAPABILITY_TEST_EXPECTED_RESULT;
+
+// Hardcoded values in TPM simulator.
+UINT32 auditTransientMin = 3;
+UINT32 auditLoadedMin = 3;
+
+// These are hardcoded values in RM, so they aren't connection-specific.
+UINT32 noAuditTransientMin = RM_TRANSIENT_MIN;
+UINT32 noAuditLoadedMin = RM_LOADED_MIN;
+
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientConnection1[10];
+UINT32 noAuditLoadedConnection1[10];
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
+{
+    { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection1[0] },
+    { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection1[0] },
+    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { TPM_PT_HR_LOADED_MIN, 1, },
+    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, }, 
+    { TPM_PT_CONTEXT_GAP_MAX, 1, },
+    { TPM_PT_MEMORY, 1,  },
+    { TPM_PT_MAX_SESSION_CONTEXT, 1,  },
+    { TPM_PT_HR_LOADED, 1, },
+    { TPM_PT_HR_LOADED_AVAIL, 1, }, 
+    { TPM_PT_HR_ACTIVE, 1,  },
+    { TPM_PT_HR_ACTIVE_AVAIL, 1, },
+    { TPM_PT_HR_TRANSIENT_AVAIL, 1, },
+};
+
+#define NUM_CAPABILITES 60
 
 void GetCapabilityTest( SESSION *auditSession )
 {
@@ -7211,6 +7291,8 @@ void GetCapabilityTest( SESSION *auditSession )
 
     TPMS_AUTH_COMMAND *sessionDataArray[1];
     TPMS_AUTH_RESPONSE *sessionDataOutArray[1];
+
+    UINT32 property;
     
     sessionDataArray[0] = &sessionData;
     sessionDataOutArray[0] = &sessionDataOut;
@@ -7257,7 +7339,7 @@ void GetCapabilityTest( SESSION *auditSession )
 
             rval = Tss2_Sys_GetCapability_Prepare( sysContext,
                     capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
-                    30 );
+                    NUM_CAPABILITES );
 
             if( rval == TSS2_RC_SUCCESS )
             {
@@ -7271,7 +7353,7 @@ void GetCapabilityTest( SESSION *auditSession )
                 {
                     rval = Tss2_Sys_GetCapability( sysContext, &sessionsData, 
                             capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
-                            30, &moreData, &capabilityData, &sessionsDataOut );
+                            NUM_CAPABILITES, &moreData, &capabilityData, &sessionsDataOut );
 
                     // Roll nonces for response
                     RollNonces( auditSession, &sessionsDataOut.rspAuths[0]->nonce );
@@ -7292,16 +7374,18 @@ void GetCapabilityTest( SESSION *auditSession )
         {
             rval = Tss2_Sys_GetCapability( sysContext, 0, 
                     capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
-                    30, &moreData, &capabilityData, 0 );
+                    NUM_CAPABILITES, &moreData, &capabilityData, 0 );
         }
 
         CheckPassed( rval );
 
         // Display properties.
-        TpmClientPrintf( NO_PREFIX,  "\n\t%s:  ", capabilityTestSetups[i].capString );
+        TpmClientPrintf( NO_PREFIX, "\n%sAudit Session Test Results:\n", auditSession ? "" : "Non-" );
+        TpmClientPrintf( NO_PREFIX, "==============================\n", auditSession ? "" : "Non-" );
 
         if( capabilityTestSetups[i].capability == TPM_CAP_HANDLES )
         {
+            TpmClientPrintf( NO_PREFIX,  "%s/%8.8x: ", FindPropertyString( capabilityTestSetups[i].property ), capabilityTestSetups[i].property );
             for( j = 0; j < capabilityData.data.handles.count; j++  )
             {
                 TpmClientPrintf( NO_PREFIX,  "%8.8x%s", capabilityData.data.handles.handle[j], j == ( capabilityData.data.tpmProperties.count - 1 ) ? "" : ", "  );
@@ -7311,11 +7395,11 @@ void GetCapabilityTest( SESSION *auditSession )
         {
             for( j = 0; j < capabilityData.data.tpmProperties.count; j++  )
             {
-                TpmClientPrintf( NO_PREFIX,  "%8.8x/%8.8x", capabilityData.data.tpmProperties.tpmProperty[j].property, capabilityData.data.tpmProperties.tpmProperty[j].value );
-                TpmClientPrintf( NO_PREFIX,  "%s", ( j == ( capabilityData.data.tpmProperties.count - 1 ) ) ? "" : ", "  );
+                property = capabilityData.data.tpmProperties.tpmProperty[j].property;
+                TpmClientPrintf( NO_PREFIX,  "%s/%8.8x/%8.8x\n", FindPropertyString( property ), property, capabilityData.data.tpmProperties.tpmProperty[j].value );
             }
         }
-        TpmClientPrintf( NO_PREFIX,  "\n" );
+        TpmClientPrintf( NO_PREFIX,  "\n\n" );
     }
 }
 
