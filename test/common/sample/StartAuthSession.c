@@ -32,9 +32,11 @@
 
 #define SESSIONS_ARRAY_COUNT MAX_NUM_SESSIONS+1
 
-typedef struct {
+typedef struct _SESSION_LIST_ENTRY *SESSION_LIST_ENTRY_PTR;
+
+typedef struct _SESSION_LIST_ENTRY{
     SESSION session;
-    void *nextEntry;
+    SESSION_LIST_ENTRY_PTR nextEntry;
 } SESSION_LIST_ENTRY;
 
 SESSION_LIST_ENTRY *sessionsList = 0;
@@ -43,20 +45,20 @@ INT16 sessionEntriesUsed = 0;
 
 TPM_RC AddSession( SESSION_LIST_ENTRY **sessionEntry )
 {
-    SESSION_LIST_ENTRY **newEntry;
+    SESSION_LIST_ENTRY **lastEntry, *newEntry;
     
 //    TpmClientPrintf( 0, "In AddSession\n" );
 
     // find end of list.
-    for( newEntry = &sessionsList; *newEntry != 0; *newEntry = ( (SESSION_LIST_ENTRY *)*newEntry)->nextEntry )
+    for( lastEntry = &sessionsList; *lastEntry != 0; lastEntry = &( (SESSION_LIST_ENTRY *)*lastEntry)->nextEntry )
         ;
 
     // allocate space for session structure.
-    *newEntry = malloc( sizeof( SESSION_LIST_ENTRY ) );
-    if( *newEntry != 0 )
+    newEntry = (SESSION_LIST_ENTRY *)malloc( sizeof( SESSION_LIST_ENTRY ) );
+    if( newEntry != 0 )
     {
-        *sessionEntry = *newEntry;
-        (*sessionEntry)->nextEntry = 0;
+        *sessionEntry = *lastEntry = newEntry;
+        newEntry->nextEntry = 0;
         sessionEntriesUsed++;
         return TPM_RC_SUCCESS;
     }
@@ -70,7 +72,7 @@ TPM_RC AddSession( SESSION_LIST_ENTRY **sessionEntry )
 void DeleteSession( SESSION *session )
 {
     SESSION_LIST_ENTRY *predSession;
-    void *newNextEntry;
+    SESSION_LIST_ENTRY *newNextEntry;
 
 //    TpmClientPrintf( 0, "In DeleteSession\n" );
     
@@ -88,7 +90,7 @@ void DeleteSession( SESSION *session )
         {
             sessionEntriesUsed--;
 
-            newNextEntry = &( (SESSION_LIST_ENTRY *)predSession->nextEntry)->nextEntry;
+            newNextEntry = ( (SESSION_LIST_ENTRY *)predSession->nextEntry)->nextEntry;
 
             free( predSession->nextEntry );
 
@@ -154,7 +156,7 @@ void RollNonces( SESSION *session, TPM2B_NONCE *newNonce  )
 // It performs the command, calculates the session key, and updates a
 // SESSION structure.
 //
-TPM_RC StartAuthSession( SESSION *session )
+TPM_RC StartAuthSession( SESSION *session, TSS2_TCTI_CONTEXT *tctiContext )
 {
     TPM_RC rval;
     TPM2B_ENCRYPTED_SECRET key;
@@ -165,7 +167,7 @@ TPM_RC StartAuthSession( SESSION *session )
     
     key.t.size = 0;
 
-    tmpSysContext = InitSysContext( 1000, resMgrTctiContext, &abiVersion );
+    tmpSysContext = InitSysContext( 1000, tctiContext, &abiVersion );
     if( tmpSysContext == 0 )
         return TSS2_APP_RC_INIT_SYS_CONTEXT_FAILED;
 
@@ -252,7 +254,8 @@ TPM_RC StartAuthSessionWithParams( SESSION **session,
     TPMI_DH_OBJECT tpmKey, TPM2B_MAX_BUFFER *salt, 
     TPMI_DH_ENTITY bind, TPM2B_AUTH *bindAuth, TPM2B_NONCE *nonceCaller,
     TPM2B_ENCRYPTED_SECRET *encryptedSalt,
-    TPM_SE sessionType, TPMT_SYM_DEF *symmetric, TPMI_ALG_HASH algId )
+    TPM_SE sessionType, TPMT_SYM_DEF *symmetric, TPMI_ALG_HASH algId,
+    TSS2_TCTI_CONTEXT *tctiContext )
 {
     TPM_RC rval;
     SESSION_LIST_ENTRY *sessionEntry;
@@ -306,8 +309,11 @@ TPM_RC StartAuthSessionWithParams( SESSION **session,
         if( (*session)->bind == TPM_RH_NULL )
             (*session)->authValueBind.t.size = 0;
 
-
-        rval = StartAuthSession( *session );
+        rval = StartAuthSession( *session, tctiContext );
+        if( rval != TSS2_RC_SUCCESS )
+        {
+            DeleteSession( *session );
+        }
     }
     else
     {
@@ -319,7 +325,7 @@ TPM_RC StartAuthSessionWithParams( SESSION **session,
 TPM_RC EndAuthSession( SESSION *session )
 {
     TPM_RC rval = TPM_RC_SUCCESS;
-    
+
     DeleteSession( session );
 
     return rval;

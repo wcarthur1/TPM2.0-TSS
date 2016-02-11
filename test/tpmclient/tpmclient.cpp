@@ -1522,7 +1522,7 @@ void TestStartAuthSession()
     encryptedSalt.t.size = 0;
     
      // Init session
-    rval = StartAuthSessionWithParams( &authSession, TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+    rval = StartAuthSessionWithParams( &authSession, TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
     
     rval = Tss2_Sys_FlushContext( sysContext, authSession->sessionHandle );
@@ -1530,7 +1530,7 @@ void TestStartAuthSession()
     EndAuthSession( authSession );
 
     // Init session
-    rval = StartAuthSessionWithParams( &authSession, TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, 0xff, &symmetric, TPM_ALG_SHA256 );
+    rval = StartAuthSessionWithParams( &authSession, TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, 0xff, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckFailed( rval, TPM_RC_VALUE + TPM_RC_P + TPM_RC_3 );
 
     // Try starting a bunch to see if resource manager handles this correctly.
@@ -1544,7 +1544,7 @@ void TestStartAuthSession()
 //        TpmClientPrintf( 0, "i = 0x%4.4x\n", i );
 
         // Init session struct
-        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
         TpmClientPrintf( 0, "Number of sessions created: %d\n\n", i );
 
@@ -1593,7 +1593,7 @@ void TestStartAuthSession()
     }
 
     // Now do some gap tests.
-    rval = StartAuthSessionWithParams( &sessions[0], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+    rval = StartAuthSessionWithParams( &sessions[0], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
 
 #ifdef DEBUG_GAP_HANDLING   
@@ -1605,7 +1605,7 @@ void TestStartAuthSession()
     {
 //        TpmClientPrintf( 0, "i(3) = 0x%4.4x\n", i );
         
-        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
 
         rval = Tss2_Sys_FlushContext( sysContext, sessions[i]->sessionHandle );
@@ -1617,7 +1617,7 @@ void TestStartAuthSession()
 
 #ifdef DEBUG_GAP_HANDLING   
     // Now do some gap tests.
-    rval = StartAuthSessionWithParams( &sessions[8], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+    rval = StartAuthSessionWithParams( &sessions[8], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
 #endif
     
@@ -1628,7 +1628,7 @@ void TestStartAuthSession()
 #endif        
     {
 //        TpmClientPrintf( 0, "i(4) = 0x%4.4x\n", i );
-        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+        rval = StartAuthSessionWithParams( &sessions[i], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
 
         rval = Tss2_Sys_FlushContext( sysContext, sessions[i]->sessionHandle );
@@ -1643,7 +1643,7 @@ void TestStartAuthSession()
     for( i = 0; i < 5; i++ )
     {
 //        TpmClientPrintf( 0, "i(5) = 0x%4.4x\n", i );
-        rval = StartAuthSessionWithParams( &sessions[i+16], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256 );
+        rval = StartAuthSessionWithParams( &sessions[i+16], TPM_RH_NULL, 0, TPM_RH_PLATFORM, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
     }
 
@@ -2670,7 +2670,7 @@ TPM_RC BuildPolicy( TSS2_SYS_CONTEXT *sysContext, SESSION **policySession,
     
     // Start policy session.
     symmetric.algorithm = TPM_ALG_NULL;
-    rval = StartAuthSessionWithParams( policySession, TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, trialSession ? TPM_SE_TRIAL : TPM_SE_POLICY , &symmetric, TPM_ALG_SHA256 );
+    rval = StartAuthSessionWithParams( policySession, TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, trialSession ? TPM_SE_TRIAL : TPM_SE_POLICY , &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     if( rval != TPM_RC_SUCCESS )
         return rval;
 
@@ -2717,7 +2717,7 @@ TPM_RC CreateNVIndex( TSS2_SYS_CONTEXT *sysContext, SESSION **policySession, TPM
     symmetric.algorithm = TPM_ALG_NULL;
     rval = StartAuthSessionWithParams( policySession, TPM_RH_NULL,
             0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
 
     // Send PolicyLocality command
@@ -4179,7 +4179,7 @@ void SimplePolicyTest()
     //
     rval = StartAuthSessionWithParams( &trialPolicySession, TPM_RH_NULL,
             0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, TPM_SE_TRIAL,
-            &symmetric, sessionAlg );
+            &symmetric, sessionAlg, resMgrTctiContext );
     CheckPassed( rval );
 
     rval = Tss2_Sys_PolicyAuthValue( sysContext, trialPolicySession->sessionHandle, 0, 0 );
@@ -4241,7 +4241,7 @@ void SimplePolicyTest()
     // saved into nvSession structure for later use.
     rval = StartAuthSessionWithParams( &nvSession, TPM_RH_NULL,
             0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, TPM_SE_POLICY,
-            &symmetric, sessionAlg );
+            &symmetric, sessionAlg, resMgrTctiContext );
     CheckPassed( rval );
 
     // Get the name of the session and save it in
@@ -4479,7 +4479,7 @@ void SimpleHmacTest()
     // saved into nvSession structure for later use.
     rval = StartAuthSessionWithParams( &nvSession, TPM_RH_NULL,
             0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, TPM_SE_HMAC,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
 
     // Get the name of the session and save it in
@@ -4712,7 +4712,7 @@ void SimpleHmacOrPolicyTest( bool hmacTest )
         rval = StartAuthSessionWithParams( &trialPolicySession,
                 TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt,
                 TPM_SE_TRIAL,
-                &symmetric, TPM_ALG_SHA256 );
+                &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
 
         rval = Tss2_Sys_PolicyAuthValue( simpleTestContext,
@@ -4796,7 +4796,7 @@ void SimpleHmacOrPolicyTest( bool hmacTest )
 
     rval = StartAuthSessionWithParams( &nvSession, TPM_RH_NULL,
             0, TPM_RH_NULL, 0, &nonceCaller, &encryptedSalt, tpmSe,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );
 
     // Get the name of the session and save it in
@@ -5154,7 +5154,7 @@ void HmacSessionTest()
                     
                 rval = StartAuthSessionWithParams( &nvSession, hmacTestSetups[j].tpmKey,
                         hmacTestSetups[j].salt, hmacTestSetups[j].bound, &nvAuth, &nonceOlder, &encryptedSalt,
-                        TPM_SE_HMAC, &symmetric, TPM_ALG_SHA1 );
+                        TPM_SE_HMAC, &symmetric, TPM_ALG_SHA1, resMgrTctiContext );
                 CheckPassed( rval );
 
                 // Get and print name of the session.
@@ -5324,7 +5324,7 @@ void HmacSessionTest()
                     symmetric.keyBits.aes = 128;
                     symmetric.mode.aes = TPM_ALG_CFB;
 
-                    rval = StartAuthSessionWithParams( &nvSession, hmacTestSetups[j].tpmKey,  hmacTestSetups[j].salt, hmacTestSetups[j].bound, &nvAuth, &nonceOlder, &encryptedSalt, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA1 );
+                    rval = StartAuthSessionWithParams( &nvSession, hmacTestSetups[j].tpmKey,  hmacTestSetups[j].salt, hmacTestSetups[j].bound, &nvAuth, &nonceOlder, &encryptedSalt, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA1, resMgrTctiContext );
                     CheckPassed( rval );
 
                     CopySizedByteBuffer( &( nvSession->authValueBind.b ), &( nvAuth.b ) );
@@ -5536,7 +5536,7 @@ void TestEncryptDecryptSession()
         // Start policy session for decrypt/encrypt session.
         rval = StartAuthSessionWithParams( &encryptDecryptSession,
                 TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_POLICY,
-                &symmetric, TPM_ALG_SHA256 );
+                &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         CheckPassed( rval );
 
         //
@@ -6179,7 +6179,7 @@ void  RmZeroSizedResponseTest()
     // Start policy session for encrypt session.
     rval = StartAuthSessionWithParams( &encryptSession,
             TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckFailed( rval, TSS2_TCTI_RC_IO_ERROR );
 }
 
@@ -6223,19 +6223,19 @@ void CmdRspAuthsTests()
     // Start encrypt session.
     rval = StartAuthSessionWithParams( &encryptSession,
             TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval ); // #1
 
     // Start decrypt session.
     rval = StartAuthSessionWithParams( &decryptSession,
             TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval );  // #2
 
     // Start audit session.
     rval = StartAuthSessionWithParams( &auditSession,
             TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC,
-            &symmetric, TPM_ALG_SHA256 );
+            &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
     CheckPassed( rval ); // #3
 
     encryptCmdAuth.sessionHandle = encryptSession->sessionHandle;
@@ -6424,7 +6424,16 @@ void CmdRspAuthsTests()
     CheckPassed( rval ); // #17
 
     // Others?
-    
+
+    // Now delete sessions.
+    rval = EndAuthSession( encryptSession );
+    CheckPassed( rval );
+
+    rval = EndAuthSession( decryptSession );
+    CheckPassed( rval );
+
+    rval = EndAuthSession( auditSession );
+    CheckPassed( rval );
 }
 
 void GetSetEncryptParamTests()
@@ -7244,38 +7253,125 @@ typedef struct {
     UINT32 *resultsArray;
 } CAPABILITY_TEST_EXPECTED_RESULT;
 
-// Hardcoded values in TPM simulator.
-UINT32 auditTransientMin = 3;
-UINT32 auditLoadedMin = 3;
-
-// These are hardcoded values in RM, so they aren't connection-specific.
+// These are value in the RM that aren't connection-specific.
 UINT32 noAuditTransientMin = RM_TRANSIENT_MIN;
 UINT32 noAuditLoadedMin = RM_LOADED_MIN;
+UINT32 noAuditActiveSessionMax = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditContextGapMax = RM_CONTEXT_GAP_MAX;
+UINT32 noAuditMemory = 2;
+UINT32 noAuditMaxSessionContext = 0x856;
 
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded = 4;
+UINT32 noAuditLoadedAvail = 6;
+UINT32 noAuditActive = 0;
+UINT32 noAuditActiveAvail = 0x40;
+UINT32 noAuditTransientAvail = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection1[10];
 UINT32 noAuditLoadedConnection1[10];
+
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
+#if 0    
     { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection1[0] },
     { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection1[0] },
+#endif            
     { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
-    { TPM_PT_HR_LOADED_MIN, 1, },
-    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, }, 
-    { TPM_PT_CONTEXT_GAP_MAX, 1, },
-    { TPM_PT_MEMORY, 1,  },
-    { TPM_PT_MAX_SESSION_CONTEXT, 1,  },
-    { TPM_PT_HR_LOADED, 1, },
-    { TPM_PT_HR_LOADED_AVAIL, 1, }, 
-    { TPM_PT_HR_ACTIVE, 1,  },
-    { TPM_PT_HR_ACTIVE_AVAIL, 1, },
-    { TPM_PT_HR_TRANSIENT_AVAIL, 1, },
+    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ TPM_PT_MEMORY, 1, &noAuditMemory },
+    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { TPM_PT_HR_LOADED, 1, &noAuditLoaded },
+    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail }, 
+    { TPM_PT_HR_ACTIVE, 1, &noAuditActive },
+    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail },
+    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail },
+    { 0xffffffff, 1, },
 };
+
+void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 expectedResult, UINT32 actualResult )
+{
+    TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x\n",
+            capability, property, expectedResult, actualResult );
+    Cleanup();
+}
+
+
+TSS2_RC FindExpectedResult( CAPABILITY_TEST_EXPECTED_RESULT resultsArray[], UINT32 property, CAPABILITY_TEST_EXPECTED_RESULT **expectedResultStruct )
+{
+    int i;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
+    for( i = 0, *expectedResultStruct = 0; resultsArray[i].property != 0xffffffff; i++ )
+    {
+        if( resultsArray[i].property == property )
+        {
+            *expectedResultStruct = &resultsArray[i];
+        }
+    }
+
+    if( *expectedResultStruct == 0 )
+        rval = 1;
+
+    return rval;
+}
+
+void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPABILITY_TEST_EXPECTED_RESULT resultsArray[] )
+{
+    unsigned int i;
+    CAPABILITY_TEST_EXPECTED_RESULT *expectedResultStruct;
+    UINT32 expectedResult, actualResult, property;
+	TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    if( capabilityData->capability == TPM_CAP_HANDLES )
+    {
+        rval = FindExpectedResult( resultsArray, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, &expectedResultStruct );
+        if( rval == TSS2_RC_SUCCESS )
+        {
+            for( i = 0; i < capabilityData->data.handles.count; i++ )
+            {
+                expectedResult = expectedResultStruct->resultsArray[i];
+                actualResult = capabilityData->data.handles.handle[i];
+
+                if( actualResult != expectedResult )
+                {
+                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, expectedResult, actualResult );
+                }
+            }
+        }
+    }
+    else if( capabilityData->capability == TPM_CAP_TPM_PROPERTIES )
+    {
+        for( i = 0; i < capabilityData->data.tpmProperties.count; i++ )
+        {
+            property = capabilityData->data.tpmProperties.tpmProperty[i].property;
+            actualResult = capabilityData->data.tpmProperties.tpmProperty[i].value;
+
+            rval = FindExpectedResult( resultsArray, property, &expectedResultStruct );
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                expectedResult = expectedResultStruct->resultsArray[0];
+                if( actualResult != expectedResult )
+                {
+                    VirtualizedCapTestFailure( capabilityData->capability, property, expectedResult, actualResult );
+                }
+            }
+        }
+    }
+    else
+    {
+        TpmClientPrintf( NO_PREFIX,  "ERROR:  bad capability %8.8x in VerifyGetCapabilityTestResults()\n", capabilityData->capability );
+        Cleanup();
+    }
+}
+
 
 #define NUM_CAPABILITES 60
 
-void GetCapabilityTest( SESSION *auditSession )
+void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext )
 {
     unsigned int i, j;
     TPMS_CAPABILITY_DATA capabilityData;
@@ -7400,36 +7496,94 @@ void GetCapabilityTest( SESSION *auditSession )
             }
         }
         TpmClientPrintf( NO_PREFIX,  "\n\n" );
+
+        if( !auditSession )
+        {
+            VerifyGetCapabilityTestResults( &capabilityData, capabilityTestResultsNoAuditConnection1 );
+        }
     }
 }
 
+#define connection1Sessions 20
+SESSION *auditSessionsConnection1[connection1Sessions];
+
+#define connection2Sessions 10
+SESSION *auditSessionsConnection2[connection2Sessions];
+
+
 void GetCapabilityTests()
 {
-    SESSION *auditSession;
     TPM2B_NONCE nonceCaller;
     TPMT_SYM_DEF symmetric;
     TSS2_RC rval = TSS2_RC_SUCCESS;
-
+    TSS2_TCTI_CONTEXT *otherResMgrTctiContext = 0;
+    TSS2_SYS_CONTEXT *otherSysContext;
+    char otherResMgrInterfaceName[] = "Other Resource Manager";
+    int i;
+    
     TpmClientPrintf( NO_PREFIX,  "\nGetCapability Tests:\n" );
+    
+    rval = InitTctiResMgrContext( rmInterfaceConfig, &otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    if( rval != TSS2_RC_SUCCESS )
+    {
+        TpmClientPrintf( 0, "Resource Mgr, %s, failed initialization: 0x%x.  Exiting...\n", resMgrInterfaceInfo.shortName, rval );
+        Cleanup();
+        return;
+    }
+    else
+    {
+        (( TSS2_TCTI_CONTEXT_INTEL *)otherResMgrTctiContext )->status.debugMsgLevel = debugLevel;
+    }
+    
+    otherSysContext = InitSysContext( 0, otherResMgrTctiContext, &abiVersion );
+    if( otherSysContext == 0 )
+    {
+        InitSysContextFailure();
+    }
     
     // Create audit session.
     symmetric.algorithm = TPM_ALG_NULL;
     symmetric.keyBits.sym = 0;
     symmetric.mode.sym = 0;
     nonceCaller.t.size = 0;
-    rval = StartAuthSessionWithParams( &auditSession, TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256 );
-    CheckPassed( rval );
+
+    // Start sessions for first connection.
+
+	for( i = 0; i < connection1Sessions; i++ )
+    {
+        rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
+        CheckPassed( rval );
+    }
+
+        // Start sessions for first connection.
+    for( i = 0; i < connection2Sessions; i++ )
+    {
+        rval = StartAuthSessionWithParams( &auditSessionsConnection2[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
+        CheckPassed( rval );
+    }
+
+    // NOTE: this one must precede non-audit session case, since
+    // results of this are used to help fill in some expected
+    // test results for non-audit session cases.
+    GetCapabilityTest( auditSessionsConnection1[0], sysContext );
+
+    //SetupGetCapabilityTest();
     
-    GetCapabilityTest( 0 );
+    GetCapabilityTest( 0, sysContext );
 
-    GetCapabilityTest( auditSession );
+    GetCapabilityTest( 0, otherSysContext );
 
-    rval = Tss2_Sys_FlushContext( sysContext, auditSession->sessionHandle );
-    CheckPassed( rval );
+    for( i = 0; i < connection1Sessions; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection1[i] );
+    }
 
-    rval = EndAuthSession( auditSession );
-    CheckPassed( rval );
-
+    for( i = 0; i < connection2Sessions; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection2[i] );
+    }
 }
 
 void TpmTest()

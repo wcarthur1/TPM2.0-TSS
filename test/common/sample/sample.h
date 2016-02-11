@@ -58,7 +58,7 @@ enum TSS2_APP_RC_CODE
     APP_RC_BAD_LOCALITY
 };
 
-// Add this to application-specific error codes so they overlap
+// Add this to application-specific error codes so they don't overlap
 // with TSS ones which may be re-used for app level errors.
 #define APP_RC_OFFSET 0x100
 
@@ -185,7 +185,7 @@ extern TPM_RC CheckResponseHMACs( TSS2_SYS_CONTEXT *sysContext,
 
 TPM_RC StartAuthSessionWithParams( SESSION **session, TPMI_DH_OBJECT tpmKey, TPM2B_MAX_BUFFER *salt,
     TPMI_DH_ENTITY bind, TPM2B_AUTH *bindAuth, TPM2B_NONCE *nonceCaller, TPM2B_ENCRYPTED_SECRET *encryptedSalt,
-    TPM_SE sessionType, TPMT_SYM_DEF *symmetric, TPMI_ALG_HASH algId );
+    TPM_SE sessionType, TPMT_SYM_DEF *symmetric, TPMI_ALG_HASH algId, TSS2_TCTI_CONTEXT *tctiContext );
 
 //
 // Used by upper layer code to save and update entity data

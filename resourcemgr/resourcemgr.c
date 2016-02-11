@@ -524,9 +524,14 @@ TSS2_RC	GetNewVirtualHandle( TPM_HANDLE realHandle, TPM_HANDLE *newVirtualHandle
 
 void SetRmErrorLevel( TSS2_RC *rval, TSS2_RC errorLevel )
 {
-    if( ( ( *rval & TSS2_ERROR_LEVEL_MASK ) == TSS2_SYS_ERROR_LEVEL ) || ( *rval & TSS2_ERROR_LEVEL_MASK ) != 0 )
+    if( ( *rval & TSS2_ERROR_LEVEL_MASK ) == TSS2_SYS_ERROR_LEVEL )
     {
-        // This is a TPM error or a SYSAPI error, so add correct error level.
+        // This is a SYSAPI error, so add correct error level.
+        *rval &= ~TSS2_ERROR_LEVEL_MASK;
+        *rval |= errorLevel;
+    }
+    else if(  ( *rval & TSS2_ERROR_LEVEL_MASK ) != 0 )
+    {
         *rval &= ~TSS2_ERROR_LEVEL_MASK;
         *rval |= TSS2_RESMGRTPM_ERROR_LEVEL;
     }
@@ -842,6 +847,53 @@ TSS2_RC FindEntry(RESOURCE_MANAGER_ENTRY *firstEntry,
         return TSS2_RC_SUCCESS;
 }
 
+
+TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
+{
+    RESOURCE_MANAGER_ENTRY *entryPtr, *oldEntryPtr;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
+    for( entryPtr = entryList; entryPtr != 0 && rval == TSS2_RC_SUCCESS; )
+    {
+        if( connectionId == ALL_CONNECTIONS || connectionId == entryPtr->connectionId )
+        {
+            if( ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_HMAC_SESSION ||
+                ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_POLICY_SESSION )
+            {
+                // Flush the session.
+                rval = Tss2_Sys_FlushContext( resMgrSysContext, entryPtr->realHandle );
+                if( rval != TSS2_RC_SUCCESS )
+                {
+                    SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+                    break;
+                }
+                else
+                {
+                    oldEntryPtr = entryPtr;
+                    entryPtr = entryPtr->nextEntry;
+                    rval = RemoveEntry( oldEntryPtr );
+                    if( rval != TSS2_RC_SUCCESS )
+                    {
+                        SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                entryPtr = entryPtr->nextEntry;
+            }
+        }
+        else
+        {
+            entryPtr = entryPtr->nextEntry;
+        }        
+    }
+    return rval;
+}
+
+
+
 TSS2_RC EvictContext(TPM_HANDLE virtualHandle)
 {
     TSS2_RC rval = TSS2_RC_SUCCESS;
@@ -864,7 +916,7 @@ TSS2_RC EvictContext(TPM_HANDLE virtualHandle)
 
             if( !IsSessionHandle( virtualHandle ) )
             {
-                rval = Tss2_Sys_FlushContext( resMgrSysContext, foundEntryPtr->realHandle );
+               rval = Tss2_Sys_FlushContext( resMgrSysContext, foundEntryPtr->realHandle );
                 if( rval != TSS2_RC_SUCCESS )
                 {
                     SetRmErrorLevel( &rval, TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -1793,8 +1845,10 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
                     if( rval == TSS2_RC_SUCCESS )
                     {
-                        if( RM_LOADED_MIN >= newValue )
-                            newValue = RM_LOADED_MIN - newValue;
+                        // NOTE:  don't need to check for RM_LOADED_MIN >= newValue
+                        // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
+                        // session are created.
+                        newValue = RM_LOADED_MIN - newValue;
                     }
                     break;
                 case TPM_PT_HR_ACTIVE:
@@ -1804,8 +1858,10 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
                     if( rval == TSS2_RC_SUCCESS )
                     {
-                        if( RM_ACTIVE_SESSIONS_MAX >= newValue )
-                            newValue = RM_ACTIVE_SESSIONS_MAX - newValue;
+                        // NOTE:  don't need to check for RM_ACTIVE_SESSIONS_MAX >= newValue,
+                        // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
+                        // session are created.
+                        newValue = RM_ACTIVE_SESSIONS_MAX - newValue;
                     }
                     break;
                 case TPM_PT_HR_TRANSIENT_AVAIL:
@@ -2713,6 +2769,8 @@ tpmCmdDone:
 
     printf( "TpmCmdServer died (%s), rval: 0x%8.8x, socket: 0x%x.\n", serverStruct->serverName, rval, serverStruct->connectSock );
 
+    (void)FlushSessionsAndClearTable( serverStruct->connectSock );
+
     closesocket( serverStruct->connectSock );
 	CloseHandle( serverStruct->threadHandle );
     (*rmFree)( serverStruct );
@@ -2998,7 +3056,11 @@ TSS2_RC TeardownResMgr(
     const char *config              // IN        
     )
 {
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
     ResMgrPrintf( NO_PREFIX, "Tearing down Resource Manager\n" );
+
+    rval = FlushSessionsAndClearTable( ALL_CONNECTIONS );
 
 #if __linux || __unix
     if( !simulator )
@@ -3009,7 +3071,7 @@ TSS2_RC TeardownResMgr(
 
     TeardownSysContext( &resMgrSysContext );
 
-    return TSS2_RC_SUCCESS;
+    return rval;
 }
 
 TSS2_RC InitResourceMgr( int debugLevel)
