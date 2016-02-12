@@ -53,7 +53,7 @@
 // Defines for virtualized capabilities
 #define RM_TRANSIENT_MIN 10
 #define RM_LOADED_MIN 10
-#define RM_ACTIVE_SESSIONS_MAX 64
+#define RM_ACTIVE_SESSIONS_MAX 10
 #define RM_CONTEXT_GAP_MAX 0xffffff
 #define RM_TRANSIENT_MAX 0xffffff  // Current RM uses dynamically allocated slots in a linked list,
                                    // so there is no limit for the number of transient objects other than

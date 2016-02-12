@@ -56,7 +56,13 @@
 
 #include "tpm20.h"
 #include "sample.h"
+
+//
+// NOTE:  NEVER include following in a real application.  This is added here so that tpmclient can test the RM,
+// but real apps should NEVER include this.  NEVER, EVER.
+//
 #include "resourcemgr.h"
+
 #include "tpmclient.h"
 
 // This is done to allow the tests to access fields
@@ -7262,10 +7268,10 @@ UINT32 noAuditMemory = 2;
 UINT32 noAuditMaxSessionContext = 0x856;
 
 // These are values that are dynamic and connection-specific.
-UINT32 noAuditLoaded = 4;
-UINT32 noAuditLoadedAvail = 6;
-UINT32 noAuditActive = 0;
-UINT32 noAuditActiveAvail = 0x40;
+UINT32 noAuditLoaded = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditLoadedAvail = 0;
+UINT32 noAuditActive = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditActiveAvail = 0;
 UINT32 noAuditTransientAvail = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
@@ -7507,7 +7513,7 @@ void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext )
 #define connection1Sessions 20
 SESSION *auditSessionsConnection1[connection1Sessions];
 
-#define connection2Sessions 10
+#define connection2Sessions 6
 SESSION *auditSessionsConnection2[connection2Sessions];
 
 
@@ -7520,6 +7526,8 @@ void GetCapabilityTests()
     TSS2_SYS_CONTEXT *otherSysContext;
     char otherResMgrInterfaceName[] = "Other Resource Manager";
     int i;
+    TPMS_CAPABILITY_DATA capabilityData;
+    UINT32 activeSessionsNum;
     
     TpmClientPrintf( NO_PREFIX,  "\nGetCapability Tests:\n" );
     
@@ -7547,21 +7555,57 @@ void GetCapabilityTests()
     symmetric.mode.sym = 0;
     nonceCaller.t.size = 0;
 
+    rval = Tss2_Sys_GetCapability( sysContext, 0, 
+            TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
+            1, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+    activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+    
     // Start sessions for first connection.
-
+    // For this connection, try to create more sessions than allowed.  This will test the
+    // RM's logic for limiting the number of sessions created.
 	for( i = 0; i < connection1Sessions; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
-        CheckPassed( rval );
+        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN && rval != TSS2_RC_SUCCESS )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+        }
     }
 
-        // Start sessions for first connection.
+    // Need to create transient objects here, too.
+    ??
+    
+    rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
+            TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
+            1, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+    activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+    
+    // Start sessions for second connection.
+    // For this connection, create less sessions than allowed.  This will help us
+    // make sure that capabilities like ACTIVE_AVAIL are working right.
     for( i = 0; i < connection2Sessions; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection2[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
-        CheckPassed( rval );
+        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN && rval != TSS2_RC_SUCCESS )
+        {
+            CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+        }
     }
 
+    // Need to create transient objects here, too.
+    ??
+    
     // NOTE: this one must precede non-audit session case, since
     // results of this are used to help fill in some expected
     // test results for non-audit session cases.
@@ -7571,7 +7615,13 @@ void GetCapabilityTests()
     
     GetCapabilityTest( 0, sysContext );
 
-    GetCapabilityTest( 0, otherSysContext );
+    GetCapabilityTest( 0, otherSysContext, connection 1 );
+
+    GetCapabilityTest( 0, otherSysContext, connection 2 );
+
+    Need to kill connection 2 and retest capabilities
+    
+    GetCapabilityTest( 0, otherSysContext, connection 2 );
 
     for( i = 0; i < connection1Sessions; i++ )
     {
@@ -7579,11 +7629,13 @@ void GetCapabilityTests()
         rval = EndAuthSession( auditSessionsConnection1[i] );
     }
 
+#if 0    
     for( i = 0; i < connection2Sessions; i++ )
     {
         rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection2[i] );
     }
+#endif    
 }
 
 void TpmTest()

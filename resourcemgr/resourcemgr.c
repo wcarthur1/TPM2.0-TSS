@@ -1322,6 +1322,67 @@ TSS2_RC ContextGapUpdateOldestSession()
     return rval;
 }
 
+TSS2_RC FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
+    int j = 0;
+
+    j = 0;
+    nextEntry = entryList;
+
+    // Find all sessions for this connection that have the aploaded bit set.
+    // First find all HMAC sessions.
+    while( nextEntry )
+    {
+        rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_HMAC_SESSION << 24, &foundEntryPtr);
+        if( rval == TSS2_RC_SUCCESS )
+        {
+            if( foundEntryPtr->connectionId == connectionId )
+            {
+                if( foundEntryPtr->status.aploaded == 1)
+                {
+                    j++;
+                }
+            }
+        }
+        else
+            break;
+
+        nextEntry = foundEntryPtr->nextEntry;
+    }
+
+    if( rval == TSS2_RESMGR_FIND_FAILED || rval == TSS2_RC_SUCCESS )
+    {
+        // Now find all policy sessions.
+        nextEntry = entryList;
+        while( nextEntry )
+        {
+            rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_POLICY_SESSION << 24, &foundEntryPtr);
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                if( foundEntryPtr->connectionId == connectionId )
+                {
+                    if( foundEntryPtr->status.aploaded == 1 )
+                    {
+                        j++;
+                    }
+                }
+            }
+            else
+                break;
+
+            nextEntry = foundEntryPtr->nextEntry;
+        }
+        *newValue = j;
+
+        if( rval == TSS2_RESMGR_FIND_FAILED )
+            rval = TSS2_RC_SUCCESS;
+    }
+    
+    return rval;
+}
+
 TSS2_RC ResourceMgrSendTpmCommand(
     TSS2_TCTI_CONTEXT *tctiContext,
     size_t          command_size,       /* in */
@@ -1336,7 +1397,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
     RESOURCE_MANAGER_ENTRY *foundEntryPtr;
     UINT8 *currentPtr = command_buffer;
     TPM_ST tag;
-    UINT32 authAreaSize;
+    UINT32 authAreaSize, loadedSessionsNum;
     TPM2B_PUBLIC inPublic = { { CHANGE_ENDIAN_DWORD( sizeof( TPM2B_PUBLIC ) - 2), } };
 
     RESMGR_UNMARSHAL_UINT16( command_buffer, command_size, &currentPtr, &tag, &responseRval, SendCommand );
@@ -1404,9 +1465,29 @@ TSS2_RC ResourceMgrSendTpmCommand(
 
     numSessionHandles = i;
 
+    responseRval = GetConnectionId( &cmdConnectionId, tctiContext );
+    if( responseRval != TSS2_RC_SUCCESS )
+        goto SendCommand;
+
     switch( currentCommandCode )
     {
         case TPM_CC_StartAuthSession:
+
+            // Check that per connection limit hasn't been reached.
+            responseRval = FindLoadedSessionsPerConnection( cmdConnectionId, &loadedSessionsNum );
+            if( responseRval != TSS2_RC_SUCCESS )
+            {
+                goto SendCommand;
+            }
+            else
+            {
+                if( loadedSessionsNum == RM_LOADED_MIN )
+                {
+                    responseRval = TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL;
+                    goto SendCommand;
+                }
+            }
+            
             // This command must always pass, so if we already have
             // maxActiveSessions, oldest one will need to be evicted.
             if( activeSessionCount >= maxActiveSessions )
@@ -1514,10 +1595,6 @@ TSS2_RC ResourceMgrSendTpmCommand(
     if( responseRval != TSS2_RC_SUCCESS )
         goto SendCommand;
 
-    responseRval = GetConnectionId( &cmdConnectionId, tctiContext );
-    if( responseRval != TSS2_RC_SUCCESS )
-        goto SendCommand;
-
     // Load context for any sessions specified in the authorizations area.
     if( numSessionHandles )
     {
@@ -1571,7 +1648,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
         }
     }
 
-    SendCommand:
+SendCommand:
 
     rmDebugPrefix = 0;
 
@@ -1718,74 +1795,6 @@ TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_
     return rval;
 }
 
-
-TSS2_RC FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue, UINT8 checkApLoaded )
-{
-    TSS2_RC rval = TSS2_RC_SUCCESS;
-    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
-    int j = 0;
-
-    j = 0;
-    nextEntry = entryList;
-
-    // Find all sessions for this connection that have the aploaded bit set.
-    // First find all HMAC sessions.
-    while( nextEntry )
-    {
-        rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_HMAC_SESSION << 24, &foundEntryPtr);
-        if( rval == TSS2_RC_SUCCESS )
-        {
-            if( foundEntryPtr->connectionId == connectionId )
-            {
-                if( checkApLoaded )
-                {
-                    if( foundEntryPtr->status.aploaded == 1)
-                    {
-                        j++;
-                    }
-                }
-            }
-        }
-        else
-            break;
-
-        nextEntry = foundEntryPtr->nextEntry;
-    }
-
-    if( rval == TSS2_RESMGR_FIND_FAILED || rval == TSS2_RC_SUCCESS )
-    {
-        // Now find all policy sessions.
-        nextEntry = entryList;
-        while( nextEntry )
-        {
-            rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_POLICY_SESSION << 24, &foundEntryPtr);
-            if( rval == TSS2_RC_SUCCESS )
-            {
-                if( foundEntryPtr->connectionId == connectionId )
-                {
-                    if( checkApLoaded )
-                    {
-                        if( foundEntryPtr->status.aploaded == 1 )
-                        {
-                            j++;
-                        }
-                    }
-                }
-            }
-            else
-                break;
-
-            nextEntry = foundEntryPtr->nextEntry;
-        }
-        *newValue = j;
-
-        if( rval == TSS2_RESMGR_FIND_FAILED )
-            rval = TSS2_RC_SUCCESS;
-    }
-    
-    return rval;
-}
-
 TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UINT64 connectionId )
 {
     TSS2_RC rval = TSS2_RC_SUCCESS;
@@ -1839,10 +1848,10 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     newValue = sizeof( TPMS_CONTEXT );
                     break;
                 case TPM_PT_HR_LOADED:
-                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
+                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue );
                     break;
                 case TPM_PT_HR_LOADED_AVAIL:
-                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
+                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue );
                     if( rval == TSS2_RC_SUCCESS )
                     {
                         // NOTE:  don't need to check for RM_LOADED_MIN >= newValue
@@ -1852,10 +1861,10 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     }
                     break;
                 case TPM_PT_HR_ACTIVE:
-                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
+                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue );
                     break;
                 case TPM_PT_HR_ACTIVE_AVAIL:
-                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
+                    rval = FindLoadedSessionsPerConnection( connectionId, &newValue );
                     if( rval == TSS2_RC_SUCCESS )
                     {
                         // NOTE:  don't need to check for RM_ACTIVE_SESSIONS_MAX >= newValue,
@@ -1885,7 +1894,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     if( rval == TSS2_RC_SUCCESS )
                     {
                         if( RM_TRANSIENT_MAX >= j )
-                            newValue = RM_TRANSIENT_MAX - j;
+                            newValue = RM_TRANSIENT_MIN - j;
                         else
                             newValue = 0;
                     }
