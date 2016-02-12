@@ -7259,7 +7259,7 @@ typedef struct {
     UINT32 *resultsArray;
 } CAPABILITY_TEST_EXPECTED_RESULT;
 
-// These are value in the RM that aren't connection-specific.
+// These are value in the RM that aren't dynamic.
 UINT32 noAuditTransientMin = RM_TRANSIENT_MIN;
 UINT32 noAuditLoadedMin = RM_LOADED_MIN;
 UINT32 noAuditActiveSessionMax = RM_ACTIVE_SESSIONS_MAX;
@@ -7268,33 +7268,60 @@ UINT32 noAuditMemory = 2;
 UINT32 noAuditMaxSessionContext = 0x856;
 
 // These are values that are dynamic and connection-specific.
-UINT32 noAuditLoaded = RM_ACTIVE_SESSIONS_MAX;
-UINT32 noAuditLoadedAvail = 0;
-UINT32 noAuditActive = RM_ACTIVE_SESSIONS_MAX;
-UINT32 noAuditActiveAvail = 0;
-UINT32 noAuditTransientAvail = 0;
+UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditLoadedAvail1 = 0;
+UINT32 noAuditActive1 = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditActiveAvail1 = 0;
+UINT32 noAuditTransientAvail1 = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
-UINT32 noAuditTransientConnection1[10];
-UINT32 noAuditLoadedConnection1[10];
+UINT32 noAuditTransientConnection1[10] = { };
+UINT32 noAuditLoadedConnection1[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
-#if 0    
     { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection1[0] },
     { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection1[0] },
-#endif            
     { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
     { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
     { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
     { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
 	{ TPM_PT_MEMORY, 1, &noAuditMemory },
     { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
-    { TPM_PT_HR_LOADED, 1, &noAuditLoaded },
-    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail }, 
-    { TPM_PT_HR_ACTIVE, 1, &noAuditActive },
-    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail },
-    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail },
+    { TPM_PT_HR_LOADED, 1, &noAuditLoaded1 },
+    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail1 }, 
+    { TPM_PT_HR_ACTIVE, 1, &noAuditActive1 },
+    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail1 },
+    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail1 },
+    { 0xffffffff, 1, },
+};
+
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded2 = 6;
+UINT32 noAuditLoadedAvail2 = 4;
+UINT32 noAuditActive2 = 6;
+UINT32 noAuditActiveAvail2 = 4;
+UINT32 noAuditTransientAvail2 = 0;
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientConnection2[10] = { };
+UINT32 noAuditLoadedConnection2[10] = { };
+
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
+{
+    { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection2[0] },
+    { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection2[0] },
+    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ TPM_PT_MEMORY, 1, &noAuditMemory },
+    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { TPM_PT_HR_LOADED, 1, &noAuditLoaded2 },
+    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail2 }, 
+    { TPM_PT_HR_ACTIVE, 1, &noAuditActive2 },
+    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail2 },
+    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail2 },
     { 0xffffffff, 1, },
 };
 
@@ -7377,7 +7404,7 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
 
 #define NUM_CAPABILITES 60
 
-void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext )
+void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext, CAPABILITY_TEST_EXPECTED_RESULT expectedResultStruct[] )
 {
     unsigned int i, j;
     TPMS_CAPABILITY_DATA capabilityData;
@@ -7505,7 +7532,7 @@ void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext )
 
         if( !auditSession )
         {
-            VerifyGetCapabilityTestResults( &capabilityData, capabilityTestResultsNoAuditConnection1 );
+            VerifyGetCapabilityTestResults( &capabilityData, expectedResultStruct );
         }
     }
 }
@@ -7579,7 +7606,7 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    ??
+    // ??
     
     rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
             TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
@@ -7604,24 +7631,22 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    ??
+    // ??
     
     // NOTE: this one must precede non-audit session case, since
     // results of this are used to help fill in some expected
     // test results for non-audit session cases.
-    GetCapabilityTest( auditSessionsConnection1[0], sysContext );
+    GetCapabilityTest( auditSessionsConnection1[0], sysContext, capabilityTestResultsNoAuditConnection1 );
 
     //SetupGetCapabilityTest();
     
-    GetCapabilityTest( 0, sysContext );
+    GetCapabilityTest( 0, sysContext, capabilityTestResultsNoAuditConnection1 );
 
-    GetCapabilityTest( 0, otherSysContext, connection 1 );
+    GetCapabilityTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection2 );
 
-    GetCapabilityTest( 0, otherSysContext, connection 2 );
-
-    Need to kill connection 2 and retest capabilities
+    // Need to kill connection 2 and retest capabilities
     
-    GetCapabilityTest( 0, otherSysContext, connection 2 );
+//    GetCapabilityTest( 0, otherSysContext, &capabilityTestResultsNoAuditConnection2 );
 
     for( i = 0; i < connection1Sessions; i++ )
     {
