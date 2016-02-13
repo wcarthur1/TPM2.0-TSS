@@ -7276,7 +7276,7 @@ UINT32 noAuditTransientAvail1 = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection1[10] = { };
-UINT32 noAuditLoadedConnection1[10] = { };
+UINT32 noAuditLoadedConnection1[10] = { 0x02000003, 0x02000004, 0x02000001, 0x02000002, 0x02000005, 0x02000006, 0x02000007, 0x02000008, 0x02000009, 0x03000000 };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
@@ -7305,7 +7305,7 @@ UINT32 noAuditTransientAvail2 = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection2[10] = { };
-UINT32 noAuditLoadedConnection2[10] = { };
+UINT32 noAuditLoadedConnection2[10] = { 0x0200000a, 0x0200000b, 0x0200000c, 0x0200000d, 0x0200000e, 0x0200000f };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
 {
@@ -7325,10 +7325,18 @@ CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
     { 0xffffffff, 1, },
 };
 
-void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 expectedResult, UINT32 actualResult )
+void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 expectedResult, UINT32 actualResult, UINT8 resultIndex )
 {
-    TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x\n",
-            capability, property, expectedResult, actualResult );
+    char elementString[10] = "";
+    char indexString[5] = "";
+    if( capability == TPM_CAP_HANDLES )
+    {
+        strcpy( &elementString[0], "/element #" );
+        sprintf( indexString, "%d", resultIndex );
+    }
+    
+    TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual%s: = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x/%s\n",
+            elementString, capability, property, expectedResult, actualResult, indexString );
     Cleanup();
 }
 
@@ -7371,7 +7379,7 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
 
                 if( actualResult != expectedResult )
                 {
-                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, expectedResult, actualResult );
+                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, expectedResult, actualResult, i );
                 }
             }
         }
@@ -7389,7 +7397,7 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
                 expectedResult = expectedResultStruct->resultsArray[0];
                 if( actualResult != expectedResult )
                 {
-                    VirtualizedCapTestFailure( capabilityData->capability, property, expectedResult, actualResult );
+                    VirtualizedCapTestFailure( capabilityData->capability, property, expectedResult, actualResult, i );
                 }
             }
         }
@@ -7646,7 +7654,7 @@ void GetCapabilityTests()
 
     // Need to kill connection 2 and retest capabilities
     
-//    GetCapabilityTest( 0, otherSysContext, &capabilityTestResultsNoAuditConnection2 );
+//    GetCapabilityTest( auditSessionsConnection1[0], otherSysContext, &capabilityTestResultsNoAuditConnection2 );
 
     for( i = 0; i < connection1Sessions; i++ )
     {

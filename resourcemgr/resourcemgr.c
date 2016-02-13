@@ -318,6 +318,7 @@ static TPM20_ErrorResponse errorResponse;
 static UINT64 lastSessionSequenceNum = 0;
 static UINT32 gapMsbBitMask = 0;
 static TPMS_CONTEXT cmdObjectContext;
+static UINT32 savedProperty;
 
 // These are used by logic that handles resource manager structures
 // on a Startup command.
@@ -1399,7 +1400,8 @@ TSS2_RC ResourceMgrSendTpmCommand(
     TPM_ST tag;
     UINT32 authAreaSize, loadedSessionsNum;
     TPM2B_PUBLIC inPublic = { { CHANGE_ENDIAN_DWORD( sizeof( TPM2B_PUBLIC ) - 2), } };
-
+    UINT32 capability;
+    
     RESMGR_UNMARSHAL_UINT16( command_buffer, command_size, &currentPtr, &tag, &responseRval, SendCommand );
     RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, 0, &responseRval, SendCommand );
     RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, &currentCommandCode, &responseRval, SendCommand );
@@ -1502,6 +1504,20 @@ TSS2_RC ResourceMgrSendTpmCommand(
             if( responseRval != TSS2_RC_SUCCESS )
                 goto SendCommand;
 
+            break;
+        case TPM_CC_GetCapability:
+            // Need to save handle type that we're requesting, if any.  This is
+            // is needed so that when we receive the response, even if the TPM has
+            // no handles in its returned list, the capabilities virtualization code
+            // can still find the list of virtualized handles.
+
+            // First get the capability.
+            RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, &capability, &responseRval, SendCommand );
+            if( capability == TPM_CAP_HANDLES )
+            {
+                // Save the handle type, savedProperty.
+                RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, &savedProperty, &responseRval, SendCommand );
+            }
             break;
         case TPM_CC_Create:
             cmdParentHandle = cmdHandles[0].handle;
@@ -1761,16 +1777,38 @@ TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_
     RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
     int i = 0;
 
-    nextEntry = entryList;
-
-    if( receivedCapabilityData->data.handles.count != 0 )
+    if( ( handleType == ( TPM_HT_TRANSIENT << 24 ) ) || ( handleType == ( TPM_HT_LOADED_SESSION << 24 ) ) )
     {
-        if( ( receivedCapabilityData->data.handles.handle[0] & handleType ) != 0 )
+        nextEntry = entryList;
+
+        // Need to virtualize transient objects
+        while( nextEntry )
         {
-            // Need to virtualize transient objects
+            rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, handleType, &foundEntryPtr );
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                if( foundEntryPtr->connectionId == connectionId )
+                {
+                    receivedCapabilityData->data.handles.handle[i++] = foundEntryPtr->virtualHandle;
+                }
+            }
+            else
+            {
+                break;
+            }
+
+            nextEntry = foundEntryPtr->nextEntry;
+        }
+
+        // do it again for TPM_HT_SAVED_SESSION if handleType == TPM_HT_LOADED_SESSION
+        // since virtualized version of TPM_HT_LOADED_SESSIONS = (SAVED + LOADED sessions) which
+        // is the same as active HMAC + POLICY sessions.
+        nextEntry = entryList;
+        if( handleType == ( TPM_HT_LOADED_SESSION << 24 ) )
+        {
             while( nextEntry )
             {
-                rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, handleType, &foundEntryPtr );
+                rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_SAVED_SESSION << 24, &foundEntryPtr );
                 if( rval == TSS2_RC_SUCCESS )
                 {
                     if( foundEntryPtr->connectionId == connectionId )
@@ -1785,8 +1823,8 @@ TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_
 
                 nextEntry = foundEntryPtr->nextEntry;
             }
-            receivedCapabilityData->data.handles.count = i;
         }
+        receivedCapabilityData->data.handles.count = i;
     }
 
     if( rval == TSS2_RESMGR_FIND_FAILED )
@@ -1806,7 +1844,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
     
     if( receivedCapabilityData->capability == TPM_CAP_HANDLES )
     {
-        rval = VirtualizeCapHandles( receivedCapabilityData, TPM_HT_TRANSIENT << 24, connectionId );
+        rval = VirtualizeCapHandles( receivedCapabilityData, savedProperty, connectionId );
     }
     else if( receivedCapabilityData->capability == TPM_CAP_TPM_PROPERTIES )
     {
@@ -1917,7 +1955,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
     return rval;
 }
 
-TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size, UINT8 **currentPtr, TPM_RC *responseRval )
+TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size, UINT32 maxResponseSize, UINT8 **currentPtr, TPM_RC *responseRval )
 {
 	UINT32 i, newResponseSize;
     TSS2_RC rval = TSS2_RC_SUCCESS;
@@ -1969,7 +2007,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
 
     // Set size of returned response.
     newResponseSize = ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData - ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr;
-    if( *response_size >= newResponseSize )
+    if( newResponseSize <= maxResponseSize )
     {
         *response_size = newResponseSize;
 
@@ -2021,7 +2059,8 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
     UINT8 *currentPtr, *savedCurrentPtr;
     UINT32 responseHandles[3] = { 0, 0, 0 };
     TPMA_SESSION sessionAttributes;
-
+    UINT32 maxResponseSize = *response_size;
+    
     currentPtr = response_buffer;
     
     // Evict all objects, sessions, and sequences.  This leaves the TPM
@@ -2256,7 +2295,7 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                 else if( currentCommandCode == TPM_CC_GetCapability && !( tag == TPM_ST_SESSIONS && sessionHandles[0].sessionAttributes.audit ) )
                 {
                     // Virtualize the returned capabilities, if an audit session isn't being used for the command.
-                    responseRval = VirtualizeCapabilities( response_buffer, response_size, &currentPtr, &responseRval );
+                    responseRval = VirtualizeCapabilities( response_buffer, response_size, maxResponseSize, &currentPtr, &responseRval );
 
                     if( responseRval != TSS2_RC_SUCCESS )
                         goto returnFromResourceMgrReceiveTpmResponse;
