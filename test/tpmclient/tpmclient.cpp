@@ -7276,7 +7276,7 @@ UINT32 noAuditTransientAvail1 = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection1[10] = { };
-UINT32 noAuditLoadedConnection1[10] = { 0x02000003, 0x02000004, 0x02000001, 0x02000002, 0x02000005, 0x02000006, 0x02000007, 0x02000008, 0x02000009, 0x03000000 };
+UINT32 noAuditLoadedConnection1[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
@@ -7305,7 +7305,7 @@ UINT32 noAuditTransientAvail2 = 0;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection2[10] = { };
-UINT32 noAuditLoadedConnection2[10] = { 0x0200000a, 0x0200000b, 0x0200000c, 0x0200000d, 0x0200000e, 0x0200000f };
+UINT32 noAuditLoadedConnection2[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
 {
@@ -7325,18 +7325,26 @@ CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
     { 0xffffffff, 1, },
 };
 
-void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 expectedResult, UINT32 actualResult, UINT8 resultIndex )
+void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 *expectedResult, UINT32 *actualResult, UINT8 resultNum )
 {
-    char elementString[10] = "";
-    char indexString[5] = "";
+	UINT32 i;
+
     if( capability == TPM_CAP_HANDLES )
     {
-        strcpy( &elementString[0], "/element #" );
-        sprintf( indexString, "%d", resultIndex );
+        TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property: = 0x%8.8x/0x%8.8x\n\t" \
+                "expected results: ", capability, property );
+        for( i = 0; i < resultNum; i++ )
+            TpmClientPrintf( NO_PREFIX,  "%8.8x ", expectedResult[i] );
+
+        TpmClientPrintf( NO_PREFIX,  "\n\tactual results: " );
+        for( i = 0; i < resultNum; i++ )
+            TpmClientPrintf( NO_PREFIX,  "%8.8x ", actualResult[i] );
     }
-    
-    TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual%s: = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x/%s\n",
-            elementString, capability, property, expectedResult, actualResult, indexString );
+    else
+    {
+        TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual: = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x\n",
+            capability, property, *expectedResult, *actualResult );
+    }
     Cleanup();
 }
 
@@ -7362,25 +7370,46 @@ TSS2_RC FindExpectedResult( CAPABILITY_TEST_EXPECTED_RESULT resultsArray[], UINT
 
 void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPABILITY_TEST_EXPECTED_RESULT resultsArray[] )
 {
-    unsigned int i;
+    unsigned int i, j;
     CAPABILITY_TEST_EXPECTED_RESULT *expectedResultStruct;
     UINT32 expectedResult, actualResult, property;
 	TSS2_RC rval = TSS2_RC_SUCCESS;
-
+    UINT32 actualResults[20];
+	int matchFound = 0;
+    
     if( capabilityData->capability == TPM_CAP_HANDLES )
     {
         rval = FindExpectedResult( resultsArray, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, &expectedResultStruct );
         if( rval == TSS2_RC_SUCCESS )
         {
+            if( capabilityData->data.handles.count != expectedResultStruct->resultsArrayCount )
+            {
+                TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property, counts not the same, expected/actual: = 0x%8.8x/0x%8.8x\n",
+                        expectedResultStruct->resultsArrayCount, capabilityData->data.handles.count );
+                Cleanup();
+            }
             for( i = 0; i < capabilityData->data.handles.count; i++ )
             {
-                expectedResult = expectedResultStruct->resultsArray[i];
                 actualResult = capabilityData->data.handles.handle[i];
 
-                if( actualResult != expectedResult )
+                matchFound = 0;
+                for( j = 0; j < capabilityData->data.handles.count; j++ )
                 {
-                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, expectedResult, actualResult, i );
+                    expectedResult = expectedResultStruct->resultsArray[j];
+
+                    if( actualResult == expectedResult )
+                    {
+                        matchFound = 1;
+                    }
                 }
+                if( !matchFound )
+                {
+                    for( j = 0; j < capabilityData->data.handles.count; j++ )
+                        actualResults[j] = capabilityData->data.handles.handle[j];
+                    
+                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK,
+                            &( expectedResultStruct->resultsArray[0] ), &actualResults[0], capabilityData->data.handles.count );
+                }                    
             }
         }
     }
@@ -7397,7 +7426,7 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
                 expectedResult = expectedResultStruct->resultsArray[0];
                 if( actualResult != expectedResult )
                 {
-                    VirtualizedCapTestFailure( capabilityData->capability, property, expectedResult, actualResult, i );
+                    VirtualizedCapTestFailure( capabilityData->capability, property, &expectedResult, &actualResult, i );
                 }
             }
         }
@@ -7560,7 +7589,7 @@ void GetCapabilityTests()
     TSS2_TCTI_CONTEXT *otherResMgrTctiContext = 0;
     TSS2_SYS_CONTEXT *otherSysContext;
     char otherResMgrInterfaceName[] = "Other Resource Manager";
-    int i;
+    UINT32 i;
     TPMS_CAPABILITY_DATA capabilityData;
     UINT32 activeSessionsNum;
     
@@ -7590,16 +7619,28 @@ void GetCapabilityTests()
     symmetric.mode.sym = 0;
     nonceCaller.t.size = 0;
 
+    //
+    // Setup sessions for first connection.
+    //
     rval = Tss2_Sys_GetCapability( sysContext, 0, 
             TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
             1, 0, &capabilityData, 0 );
     CheckPassed( rval );
-    activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+    capabilityTestResultsNoAuditConnection1[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+
+    rval = Tss2_Sys_GetCapability( sysContext, 0, 
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << 24,
+            40, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+
+    // Now copy currently loaded sessions into results array;
+    for( i = 0; i < capabilityData.data.handles.count; i++ )
+        noAuditLoadedConnection1[i] = capabilityData.data.handles.handle[i];
     
     // Start sessions for first connection.
     // For this connection, try to create more sessions than allowed.  This will test the
     // RM's logic for limiting the number of sessions created.
-	for( i = 0; i < connection1Sessions; i++ )
+    for( i = 0; i < connection1Sessions; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN && rval != TSS2_RC_SUCCESS )
@@ -7610,17 +7651,32 @@ void GetCapabilityTests()
         else
         {
             CheckPassed( rval );
+            noAuditLoadedConnection1[activeSessionsNum + i] = auditSessionsConnection1[i]->sessionHandle;
+            capabilityTestResultsNoAuditConnection1[1].resultsArrayCount++;
         }
     }
 
     // Need to create transient objects here, too.
     // ??
-    
+
+    //
+    // Setup sessions for other connection.
+    //
     rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
             TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
             1, 0, &capabilityData, 0 );
     CheckPassed( rval );
-    activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+
+	capabilityTestResultsNoAuditConnection2[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+    
+    rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << 24,
+            40, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+
+    // Now copy currently loaded sessions into results array;
+    for( i = 0; i < capabilityData.data.handles.count; i++ )
+        noAuditLoadedConnection2[i] = capabilityData.data.handles.handle[i];
     
     // Start sessions for second connection.
     // For this connection, create less sessions than allowed.  This will help us
@@ -7635,6 +7691,8 @@ void GetCapabilityTests()
         else
         {
             CheckPassed( rval );
+            noAuditLoadedConnection2[activeSessionsNum + i] = auditSessionsConnection2[i]->sessionHandle;
+            capabilityTestResultsNoAuditConnection2[1].resultsArrayCount++;
         }
     }
 
@@ -7662,13 +7720,11 @@ void GetCapabilityTests()
         rval = EndAuthSession( auditSessionsConnection1[i] );
     }
 
-#if 0    
     for( i = 0; i < connection2Sessions; i++ )
     {
         rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection2[i] );
     }
-#endif    
 }
 
 void TpmTest()
