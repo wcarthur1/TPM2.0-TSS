@@ -7365,8 +7365,8 @@ UINT32 noAuditMemory = 2;
 UINT32 noAuditMaxSessionContext = 0x856;
 
 // These are values that are dynamic and connection-specific.
-UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX;
-UINT32 noAuditLoadedAvail1 = 0;
+UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX - 1;
+UINT32 noAuditLoadedAvail1 = 1;
 UINT32 noAuditActive1 = RM_ACTIVE_SESSIONS_MAX;
 UINT32 noAuditActiveAvail1 = 0;
 UINT32 noAuditTransientAvail1 = 2;
@@ -7679,9 +7679,10 @@ void GetCapabilityTests()
     TSS2_TCTI_CONTEXT *otherResMgrTctiContext = 0;
     TSS2_SYS_CONTEXT *otherSysContext;
     char otherResMgrInterfaceName[] = "Other Resource Manager";
-    UINT32 i;
+    UINT32 i, numSessionsCreatedConnection1, numSessionsCreatedConnection2;
     TPMS_CAPABILITY_DATA capabilityData;
     UINT32 activeSessionsNum;
+    TPMS_CONTEXT context;
     
     TpmClientPrintf( NO_PREFIX,  "\nGetCapability Tests:\n" );
     
@@ -7730,9 +7731,9 @@ void GetCapabilityTests()
     // Start sessions for first connection.
     // For this connection, try to create more sessions than allowed.  This will test the
     // RM's logic for limiting the number of sessions created.
-    for( i = 0; i < CONNECTION1_SESSIONS; i++ )
+    for( i = 0, numSessionsCreatedConnection1 = 0; i < CONNECTION1_SESSIONS; i++ )
     {
-        rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
+        rval = StartAuthSessionWithParams( &auditSessionsConnection1[numSessionsCreatedConnection1], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
         if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
@@ -7741,11 +7742,16 @@ void GetCapabilityTests()
         else
         {
             CheckPassed( rval );
-            noAuditLoadedConnection1[activeSessionsNum + i] = auditSessionsConnection1[i]->sessionHandle;
+            noAuditLoadedConnection1[activeSessionsNum + numSessionsCreatedConnection1] = auditSessionsConnection1[numSessionsCreatedConnection1]->sessionHandle;
             capabilityTestResultsNoAuditConnection1[1].resultsArrayCount++;
+            numSessionsCreatedConnection1++;
         }
     }
 
+    // context save one of the sessions, so that we see diff between LOADED and ACTIVE.
+    rval = Tss2_Sys_ContextSave( sysContext, auditSessionsConnection1[numSessionsCreatedConnection1-1]->sessionHandle, &context );
+    CheckPassed( rval );
+        
     // Need to create transient objects here, too.
     for( i = 0; i < CONNECTION1_OBJECTS; i++ )
     {
@@ -7793,9 +7799,9 @@ void GetCapabilityTests()
     // Start sessions for second connection.
     // For this connection, create less sessions than allowed.  This will help us
     // make sure that capabilities like ACTIVE_AVAIL are working right.
-    for( i = 0; i < CONNECTION2_SESSIONS; i++ )
+    for( i = 0, numSessionsCreatedConnection2 = 0; i < CONNECTION2_SESSIONS; i++ )
     {
-        rval = StartAuthSessionWithParams( &auditSessionsConnection2[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
+        rval = StartAuthSessionWithParams( &auditSessionsConnection2[numSessionsCreatedConnection2], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
         if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
         {
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7803,11 +7809,20 @@ void GetCapabilityTests()
         else
         {
             CheckPassed( rval );
-            noAuditLoadedConnection2[activeSessionsNum + i] = auditSessionsConnection2[i]->sessionHandle;
+            noAuditLoadedConnection2[activeSessionsNum + numSessionsCreatedConnection2] = auditSessionsConnection2[numSessionsCreatedConnection2]->sessionHandle;
             capabilityTestResultsNoAuditConnection2[1].resultsArrayCount++;
+            numSessionsCreatedConnection2++;
         }
     }
 
+    // context save one of the sessions, and then reload it, so that we know handling for LOADED for ContextLoad is working right.
+    rval = Tss2_Sys_ContextSave( otherSysContext, auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle, &context );
+    CheckPassed( rval );
+        
+    rval = Tss2_Sys_ContextLoad( otherSysContext, &context, &( auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle ) );
+    CheckPassed( rval );
+    noAuditLoadedConnection2[CONNECTION2_SESSIONS-1] = auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle;
+        
     // Need to create transient objects here, too.
     for( i = 0; i < CONNECTION2_OBJECTS; i++ )
     {
@@ -7841,13 +7856,13 @@ void GetCapabilityTests()
     
 //    GetCapabilityTest( auditSessionsConnection1[0], otherSysContext, &capabilityTestResultsNoAuditConnection2 );
 
-    for( i = 0; i < CONNECTION1_SESSIONS; i++ )
+    for( i = 0; i < numSessionsCreatedConnection1; i++ )
     {
         rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection1[i] );
     }
 
-    for( i = 0; i < CONNECTION2_SESSIONS; i++ )
+    for( i = 0; i < numSessionsCreatedConnection2; i++ )
     {
         rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection2[i] );

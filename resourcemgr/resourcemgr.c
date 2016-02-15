@@ -1355,7 +1355,7 @@ void FindTransientObjectsPerConnection( UINT64 connectionId, UINT32 *newValue )
 	*newValue = j;
 }
 
-void FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue )
+void FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue, int checkAppLoaded )
 {
     TSS2_RC rval = TSS2_RC_SUCCESS;
     RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
@@ -1373,7 +1373,14 @@ void FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue )
         {
             if( foundEntryPtr->connectionId == connectionId )
             {
-                if( foundEntryPtr->status.aploaded == 1)
+                if( checkAppLoaded )
+                {
+                    if( foundEntryPtr->status.aploaded == 1)
+                    {
+                        j++;
+                    }
+                }
+                else
                 {
                     j++;
                 }
@@ -1503,7 +1510,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
         case TPM_CC_StartAuthSession:
 
             // Check that per connection limit hasn't been reached.
-            FindLoadedSessionsPerConnection( cmdConnectionId, &loadedSessionsNum );
+            FindLoadedSessionsPerConnection( cmdConnectionId, &loadedSessionsNum, 1 );
             if( loadedSessionsNum >= RM_LOADED_MIN )
             {
                 responseRval = TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL;
@@ -1953,20 +1960,20 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     newValue = sizeof( TPMS_CONTEXT );
                     break;
                 case TPM_PT_HR_LOADED:
-                    FindLoadedSessionsPerConnection( connectionId, &newValue );
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
                     break;
                 case TPM_PT_HR_LOADED_AVAIL:
-                    FindLoadedSessionsPerConnection( connectionId, &newValue );
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
                     // NOTE:  don't need to check for RM_LOADED_MIN >= newValue
                     // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
                     // session are created.
                     newValue = RM_LOADED_MIN - newValue;
                     break;
                 case TPM_PT_HR_ACTIVE:
-                    FindLoadedSessionsPerConnection( connectionId, &newValue );
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
                     break;
                 case TPM_PT_HR_ACTIVE_AVAIL:
-                    FindLoadedSessionsPerConnection( connectionId, &newValue );
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
                     // NOTE:  don't need to check for RM_ACTIVE_SESSIONS_MAX >= newValue,
                     // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
                     // session are created.
@@ -2262,6 +2269,7 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                         objectContextLoad || sessionContextLoad )
                 {
                     TPM_HANDLE newVirtualHandle;
+                    UINT8 *responseHandlePtr = &( ( (TPM20_Header_Out *)response_buffer )->otherData );
 
                     realHandle = responseHandles[0];
 
@@ -2284,8 +2292,6 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
 
                     if( !sessionContextLoad )
                     {
-                        UINT8 *responseHandlePtr = &( ( (TPM20_Header_Out *)response_buffer )->otherData );
-                        
                         responseRval = AddEntry( newVirtualHandle, realHandle, cmdParentHandle, cmdHierarchy, cmdConnectionId );
                         if( responseRval != TSS2_RC_SUCCESS )
                         {
@@ -2316,16 +2322,21 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                             foundEntryPtr->context = cmdObjectContext;
                         }
                         foundEntryPtr->status.aploaded = 1;
-                    }
 
-                    responseRval = FindEntry( entryList, RMFIND_VIRTUAL_HANDLE, newVirtualHandle, &foundEntryPtr);
-                    if( responseRval != TSS2_RC_SUCCESS )
-                    {
-                        goto returnFromResourceMgrReceiveTpmResponse;
+                        responseRval = FindEntry( entryList, RMFIND_VIRTUAL_HANDLE, newVirtualHandle, &foundEntryPtr);
+                        if( responseRval != TSS2_RC_SUCCESS )
+                        {
+                            goto returnFromResourceMgrReceiveTpmResponse;
+                        }
                     }
-
+                    
                     if( sessionContextLoad )
                     {
+                        responseRval = FindEntry( entryList, RMFIND_REAL_HANDLE, realHandle, &foundEntryPtr);
+                        if( responseRval != TSS2_RC_SUCCESS )
+                        {
+                            goto returnFromResourceMgrReceiveTpmResponse;
+                        }
                         //
                         // Update loaded bit so that EvictEntities function that is called at the
                         // the end of ResourceMgrReceiveTpmResponse will work.
@@ -2333,8 +2344,10 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                         // For objects and sequences this happens during AddEntry, but
                         // not for sessions.  So we have to do it here.
                         //
+                        foundEntryPtr->virtualHandle = newVirtualHandle;
                         foundEntryPtr->status.loaded = 1;
                         foundEntryPtr->status.aploaded = 1;
+                        *( (TPM_HANDLE *) responseHandlePtr ) = CHANGE_ENDIAN_DWORD( newVirtualHandle );
                     }
                     else
                     {
