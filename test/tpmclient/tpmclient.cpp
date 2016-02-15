@@ -7142,6 +7142,94 @@ void TestCreate1()
     CheckPassed(rval);
 }
 
+TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHandle )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
+    TPM2B_SENSITIVE_CREATE  inSensitive = { { sizeof( TPM2B_SENSITIVE_CREATE ) - 2, } };
+    TPM2B_DATA              outsideInfo = { { sizeof( TPM2B_DATA ) - 2, } };
+    TPML_PCR_SELECTION      creationPCR;
+    TPMS_AUTH_COMMAND sessionData;
+    TPMS_AUTH_RESPONSE sessionDataOut;
+    TSS2_SYS_CMD_AUTHS sessionsData;
+
+    TPM2B_PRIVATE outPrivate = { { sizeof( TPM2B_PRIVATE ) - 2, } };
+    TPM2B_PUBLIC outPublic = { { sizeof( TPM2B_PUBLIC ) - 2, } };
+    TPM2B_CREATION_DATA creationData =  { { sizeof( TPM2B_CREATION_DATA ) - 2, } };
+	TPM2B_DIGEST creationHash = { { sizeof( TPM2B_DIGEST ) - 2, } };
+	TPMT_TK_CREATION creationTicket = { 0, 0, { { sizeof( TPM2B_DIGEST ) - 2, } } };
+
+    TSS2_SYS_RSP_AUTHS sessionsDataOut;
+	TPM2B_NAME name = { { sizeof( TPM2B_NAME ) - 2, } };
+
+    TPMS_AUTH_COMMAND *sessionDataArray[1];
+    TPMS_AUTH_RESPONSE *sessionDataOutArray[1];
+
+    sessionDataArray[0] = &sessionData;
+    sessionDataOutArray[0] = &sessionDataOut;
+
+    sessionsDataOut.rspAuths = &sessionDataOutArray[0];
+    sessionsData.cmdAuths = &sessionDataArray[0];
+
+    sessionsDataOut.rspAuthsCount = 1;
+        
+    sessionData.sessionHandle = TPM_RS_PW;
+
+    // Init nonce.
+    sessionData.nonce.t.size = 0;
+
+    // init hmac
+    sessionData.hmac.t.size = 0;
+
+    // Init session attributes
+    *( (UINT8 *)((void *)&sessionData.sessionAttributes ) ) = 0;
+
+    sessionsData.cmdAuthsCount = 1;
+    sessionsData.cmdAuths[0] = &sessionData;
+
+    inSensitive.t.sensitive.userAuth = loadedSha1KeyAuth;
+    inSensitive.t.sensitive.userAuth = loadedSha1KeyAuth;
+    inSensitive.t.sensitive.data.t.size = 0;
+    inSensitive.t.size = loadedSha1KeyAuth.b.size + 2;
+    
+    inPublic.t.publicArea.type = TPM_ALG_RSA;
+    inPublic.t.publicArea.nameAlg = TPM_ALG_SHA1;
+
+    // First clear attributes bit field.
+    *(UINT32 *)&( inPublic.t.publicArea.objectAttributes) = 0;
+    inPublic.t.publicArea.objectAttributes.restricted = 1;
+    inPublic.t.publicArea.objectAttributes.userWithAuth = 1;
+    inPublic.t.publicArea.objectAttributes.decrypt = 1;
+    inPublic.t.publicArea.objectAttributes.fixedTPM = 1;
+    inPublic.t.publicArea.objectAttributes.fixedParent = 1;
+    inPublic.t.publicArea.objectAttributes.sensitiveDataOrigin = 1;
+
+    inPublic.t.publicArea.authPolicy.t.size = 0;
+    
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_ECB;
+    inPublic.t.publicArea.parameters.rsaDetail.scheme.scheme = TPM_ALG_NULL;
+    inPublic.t.publicArea.parameters.rsaDetail.keyBits = 1024;
+    inPublic.t.publicArea.parameters.rsaDetail.exponent = 0;
+
+    inPublic.t.publicArea.unique.rsa.t.size = 0;
+
+    outsideInfo.t.size = 0;
+    creationPCR.count = 0;
+    
+    inPublic.t.publicArea.parameters.rsaDetail.keyBits = 2048;
+
+    outPublic.t.size = 0;
+    creationData.t.size = 0;
+
+    rval = Tss2_Sys_CreatePrimary( sysContext, TPM_RH_PLATFORM, &sessionsData, &inSensitive, &inPublic,
+            &outsideInfo, &creationPCR, objectHandle, &outPublic, &creationData, &creationHash,
+            &creationTicket, &name, &sessionsDataOut );
+
+	return rval;
+}
+
 #if __linux || __unix
 //
 // NOTE:  these tests must be run when no RM is running in the system and when a local TPM is installe.
@@ -7194,8 +7282,8 @@ typedef struct {
 
 CAPABILITY_TEST_STRING capabilityTestStrings[] =
 {
-    { (TPM_HT_TRANSIENT << 24), "TPM_HT_TRANSIENT" },
-    { (TPM_HT_LOADED_SESSION << 24), "TPM_HT_LOADED_SESSION" },
+    { (TPM_HT_TRANSIENT << HR_SHIFT), "TPM_HT_TRANSIENT" },
+    { (TPM_HT_LOADED_SESSION << HR_SHIFT), "TPM_HT_LOADED_SESSION" },
     { TPM_PT_HR_TRANSIENT_MIN, "TPM_PT_HR_TRANSIENT_MIN" },
     { TPM_PT_HR_LOADED_MIN, "TPM_PT_HR_LOADED_MIN" },
     { TPM_PT_ACTIVE_SESSIONS_MAX, "TPM_PT_ACTIVE_SESSIONS_MAX" }, 
@@ -7235,8 +7323,8 @@ typedef struct {
 
 CAPABILITY_TEST_SETUP capabilityTestSetups[] =
 {
-    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << 24) },
-    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << 24) },
+    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << HR_SHIFT) },
+    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << HR_SHIFT) },
     { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_MIN },
 #if 0  // Don't need these because we request a large number
        // of properties from previous type.     
@@ -7280,8 +7368,8 @@ UINT32 noAuditLoadedConnection1[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
-    { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection1[0] },
-    { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection1[0] },
+    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection1[0] },
+    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection1[0] },
     { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
     { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
     { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
@@ -7309,8 +7397,8 @@ UINT32 noAuditLoadedConnection2[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
 {
-    { (TPM_HT_TRANSIENT << 24), 0 , &noAuditTransientConnection2[0] },
-    { (TPM_HT_LOADED_SESSION << 24), 0, &noAuditLoadedConnection2[0] },
+    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection2[0] },
+    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection2[0] },
     { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
     { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
     { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
@@ -7580,6 +7668,9 @@ SESSION *auditSessionsConnection1[connection1Sessions];
 #define connection2Sessions 6
 SESSION *auditSessionsConnection2[connection2Sessions];
 
+#define connection1Objects 20
+
+#define connection2Objects 6
 
 void GetCapabilityTests()
 {
@@ -7629,7 +7720,7 @@ void GetCapabilityTests()
     capabilityTestResultsNoAuditConnection1[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
 
     rval = Tss2_Sys_GetCapability( sysContext, 0, 
-            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << 24,
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
             40, 0, &capabilityData, 0 );
     CheckPassed( rval );
 
@@ -7643,7 +7734,7 @@ void GetCapabilityTests()
     for( i = 0; i < connection1Sessions; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
-        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN && rval != TSS2_RC_SUCCESS )
+        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7657,7 +7748,29 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    // ??
+    for( i = 0; i < connection1Objects; i++ )
+    {
+        rval = CreatePrimaryObject( sysContext, &noAuditTransientConnection1[i] );
+        if( ( i + 1 ) >= RM_TRANSIENT_MIN )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            capabilityTestResultsNoAuditConnection1[0].resultsArrayCount++;
+        }
+    }
+
+    // Need to flush two, so that HMAC generation functions for audit sessions can load a key and start an HMAC sequence.
+    rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[ capabilityTestResultsNoAuditConnection1[0].resultsArrayCount - 1 ] );
+    CheckPassed( rval );
+    capabilityTestResultsNoAuditConnection1[0].resultsArrayCount--;
+
+    rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[ capabilityTestResultsNoAuditConnection1[0].resultsArrayCount - 1 ] );
+    CheckPassed( rval );
+    capabilityTestResultsNoAuditConnection1[0].resultsArrayCount--;
 
     //
     // Setup sessions for other connection.
@@ -7670,7 +7783,7 @@ void GetCapabilityTests()
 	capabilityTestResultsNoAuditConnection2[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
     
     rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
-            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << 24,
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
             40, 0, &capabilityData, 0 );
     CheckPassed( rval );
 
@@ -7684,7 +7797,7 @@ void GetCapabilityTests()
     for( i = 0; i < connection2Sessions; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection2[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
-        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN && rval != TSS2_RC_SUCCESS )
+        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN )
         {
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
         }
@@ -7697,7 +7810,20 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    // ??
+    for( i = 0; i < connection2Objects; i++ )
+    {
+        rval = CreatePrimaryObject( otherSysContext, &noAuditTransientConnection2[i] );
+        if( ( i + 1 ) >= RM_TRANSIENT_MIN )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            capabilityTestResultsNoAuditConnection2[0].resultsArrayCount++;
+        }
+    }
     
     // NOTE: this one must precede non-audit session case, since
     // results of this are used to help fill in some expected
@@ -7710,7 +7836,9 @@ void GetCapabilityTests()
 
     GetCapabilityTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection2 );
 
-    // Need to kill connection 2 and retest capabilities
+    // Need to kill connection 2 and retest capabilities--should be nothing in tables.  How to test this?
+    // What happens if a connection is killed and then re-created with the same socket #?  Is it seen as the same connection?
+    // Yes, I think so, but all of it's objects and sessions should have disappeared.
     
 //    GetCapabilityTest( auditSessionsConnection1[0], otherSysContext, &capabilityTestResultsNoAuditConnection2 );
 
