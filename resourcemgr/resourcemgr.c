@@ -1504,7 +1504,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
 
             // Check that per connection limit hasn't been reached.
             FindLoadedSessionsPerConnection( cmdConnectionId, &loadedSessionsNum );
-            if( ( loadedSessionsNum + 1 ) == RM_LOADED_MIN )
+            if( loadedSessionsNum >= RM_LOADED_MIN )
             {
                 responseRval = TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
@@ -1553,7 +1553,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
 
             // Check that per connection limit hasn't been reached.
             FindTransientObjectsPerConnection( cmdConnectionId, &transientObjectsNum );
-            if( ( transientObjectsNum + 1 ) == RM_TRANSIENT_MIN )
+            if( transientObjectsNum >= RM_TRANSIENT_MIN )
             {
                 responseRval = TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
@@ -1581,7 +1581,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
 
             // Check that per connection limit hasn't been reached.
             FindTransientObjectsPerConnection( cmdConnectionId, &transientObjectsNum );
-            if( ( transientObjectsNum + 1 ) == RM_TRANSIENT_MIN )
+            if( transientObjectsNum >= RM_TRANSIENT_MIN )
             {
                 responseRval = TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
@@ -1602,7 +1602,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
         case TPM_CC_CreatePrimary:
             // Check that per connection limit hasn't been reached.
             FindTransientObjectsPerConnection( cmdConnectionId, &transientObjectsNum );
-            if( ( transientObjectsNum + 1 ) == RM_TRANSIENT_MIN )
+            if( transientObjectsNum >= RM_TRANSIENT_MIN )
             {
                 responseRval = TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
@@ -1628,7 +1628,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
         case TPM_CC_HashSequenceStart:
             // Check that per connection limit hasn't been reached.
             FindTransientObjectsPerConnection( cmdConnectionId, &transientObjectsNum );
-            if( ( transientObjectsNum + 1 ) == RM_TRANSIENT_MIN )
+            if( transientObjectsNum >= RM_TRANSIENT_MIN )
             {
                 responseRval = TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
@@ -1649,7 +1649,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
             {
                 // Check that per connection limit hasn't been reached.
                 FindTransientObjectsPerConnection( cmdConnectionId, &transientObjectsNum );
-                if( ( transientObjectsNum + 1 ) == RM_TRANSIENT_MIN )
+                if( transientObjectsNum >= RM_TRANSIENT_MIN )
                 {
                     responseRval = TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL;
                     goto SendCommand;
@@ -1960,6 +1960,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     // NOTE:  don't need to check for RM_LOADED_MIN >= newValue
                     // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
                     // session are created.
+                    newValue = RM_LOADED_MIN - newValue;
                     break;
                 case TPM_PT_HR_ACTIVE:
                     FindLoadedSessionsPerConnection( connectionId, &newValue );
@@ -1969,6 +1970,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                     // NOTE:  don't need to check for RM_ACTIVE_SESSIONS_MAX >= newValue,
                     // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
                     // session are created.
+                    newValue = RM_ACTIVE_SESSIONS_MAX - newValue;
                     break;
                 case TPM_PT_HR_TRANSIENT_AVAIL:
                     j = 0;

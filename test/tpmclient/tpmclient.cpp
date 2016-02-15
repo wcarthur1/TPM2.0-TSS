@@ -7315,6 +7315,15 @@ char *FindPropertyString( UINT32 property )
     return &propertyString[0];
 }
 
+#define CONNECTION1_SESSIONS 20
+SESSION *auditSessionsConnection1[CONNECTION1_SESSIONS];
+
+#define CONNECTION2_SESSIONS 6
+SESSION *auditSessionsConnection2[CONNECTION2_SESSIONS];
+
+#define CONNECTION1_OBJECTS 20
+
+#define CONNECTION2_OBJECTS 6
 
 typedef struct {
     TPM_CAP	capability;
@@ -7360,7 +7369,7 @@ UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX;
 UINT32 noAuditLoadedAvail1 = 0;
 UINT32 noAuditActive1 = RM_ACTIVE_SESSIONS_MAX;
 UINT32 noAuditActiveAvail1 = 0;
-UINT32 noAuditTransientAvail1 = 0;
+UINT32 noAuditTransientAvail1 = 2;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection1[10] = { };
@@ -7389,7 +7398,7 @@ UINT32 noAuditLoaded2 = 6;
 UINT32 noAuditLoadedAvail2 = 4;
 UINT32 noAuditActive2 = 6;
 UINT32 noAuditActiveAvail2 = 4;
-UINT32 noAuditTransientAvail2 = 0;
+UINT32 noAuditTransientAvail2 = CONNECTION2_OBJECTS - 2;
 
 // These will be filled in dynamically during test and are connection-specific.
 UINT32 noAuditTransientConnection2[10] = { };
@@ -7662,16 +7671,6 @@ void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext, CAP
     }
 }
 
-#define connection1Sessions 20
-SESSION *auditSessionsConnection1[connection1Sessions];
-
-#define connection2Sessions 6
-SESSION *auditSessionsConnection2[connection2Sessions];
-
-#define connection1Objects 20
-
-#define connection2Objects 6
-
 void GetCapabilityTests()
 {
     TPM2B_NONCE nonceCaller;
@@ -7731,10 +7730,10 @@ void GetCapabilityTests()
     // Start sessions for first connection.
     // For this connection, try to create more sessions than allowed.  This will test the
     // RM's logic for limiting the number of sessions created.
-    for( i = 0; i < connection1Sessions; i++ )
+    for( i = 0; i < CONNECTION1_SESSIONS; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection1[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
-        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN )
+        if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7748,10 +7747,10 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    for( i = 0; i < connection1Objects; i++ )
+    for( i = 0; i < CONNECTION1_OBJECTS; i++ )
     {
         rval = CreatePrimaryObject( sysContext, &noAuditTransientConnection1[i] );
-        if( ( i + 1 ) >= RM_TRANSIENT_MIN )
+        if( i >= RM_TRANSIENT_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
             CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7794,10 +7793,10 @@ void GetCapabilityTests()
     // Start sessions for second connection.
     // For this connection, create less sessions than allowed.  This will help us
     // make sure that capabilities like ACTIVE_AVAIL are working right.
-    for( i = 0; i < connection2Sessions; i++ )
+    for( i = 0; i < CONNECTION2_SESSIONS; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection2[i], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
-        if( ( activeSessionsNum + i + 1 ) >= RM_LOADED_MIN )
+        if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
         {
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
         }
@@ -7810,10 +7809,10 @@ void GetCapabilityTests()
     }
 
     // Need to create transient objects here, too.
-    for( i = 0; i < connection2Objects; i++ )
+    for( i = 0; i < CONNECTION2_OBJECTS; i++ )
     {
         rval = CreatePrimaryObject( otherSysContext, &noAuditTransientConnection2[i] );
-        if( ( i + 1 ) >= RM_TRANSIENT_MIN )
+        if( i >= RM_TRANSIENT_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
             CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7842,17 +7841,29 @@ void GetCapabilityTests()
     
 //    GetCapabilityTest( auditSessionsConnection1[0], otherSysContext, &capabilityTestResultsNoAuditConnection2 );
 
-    for( i = 0; i < connection1Sessions; i++ )
+    for( i = 0; i < CONNECTION1_SESSIONS; i++ )
     {
         rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection1[i] );
     }
 
-    for( i = 0; i < connection2Sessions; i++ )
+    for( i = 0; i < CONNECTION2_SESSIONS; i++ )
     {
         rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
         rval = EndAuthSession( auditSessionsConnection2[i] );
     }
+
+    for( i = 0; i < CONNECTION1_OBJECTS; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[i] );
+    }
+
+    for( i = 0; i < CONNECTION2_OBJECTS; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( otherSysContext, noAuditTransientConnection2[i] );
+    }
+
+        
 }
 
 void TpmTest()
