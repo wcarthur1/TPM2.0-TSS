@@ -1572,6 +1572,13 @@ TSS2_RC ResourceMgrSendTpmCommand(
             {
                 goto SendCommand;
             }
+
+            if( foundEntryPtr->connectionId != cmdConnectionId )
+            {
+                responseRval = TSS2_RESMGR_UNOWNED_HANDLE;
+                goto SendCommand;
+            }
+            
             cmdHierarchy = foundEntryPtr->hierarchy;
 
             // Skip past inPrivate param.
@@ -1646,6 +1653,18 @@ TSS2_RC ResourceMgrSendTpmCommand(
             cmdHierarchy = TPM_RH_NULL;
             break;
         case TPM_CC_ContextSave:
+            responseRval = FindEntry( entryList, RMFIND_VIRTUAL_HANDLE, cmdHandles[0].handle, &foundEntryPtr );
+            if( responseRval != TSS2_RC_SUCCESS )
+            {
+                goto SendCommand;
+            }
+
+            if( foundEntryPtr->connectionId != cmdConnectionId )
+            {
+                responseRval = TSS2_RESMGR_UNOWNED_HANDLE;
+                goto SendCommand;
+            }
+
             cmdSavedHandle = cmdHandles[0].handle;
             break;
         case TPM_CC_ContextLoad:
@@ -1666,6 +1685,19 @@ TSS2_RC ResourceMgrSendTpmCommand(
             break;
         case TPM_CC_FlushContext:
             cmdFlushedHandle = cmdHandles[0].handle;
+
+            responseRval = FindEntry( entryList, RMFIND_VIRTUAL_HANDLE, cmdHandles[0].handle, &foundEntryPtr );
+            if( responseRval != TSS2_RC_SUCCESS )
+            {
+                goto SendCommand;
+            }
+            
+            if( foundEntryPtr->connectionId != cmdConnectionId )
+            {
+                responseRval = TSS2_RESMGR_UNOWNED_HANDLE;
+                goto SendCommand;
+            }
+
             break;
         case TPM_CC_Startup:
             RESMGR_UNMARSHAL_UINT16( command_buffer, command_size, &currentPtr, &startupType, &responseRval, SendCommand );
