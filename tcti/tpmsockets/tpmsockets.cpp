@@ -145,18 +145,15 @@ TSS2_RC SocketSendTpmCommand(
             
     commandCode = CHANGE_ENDIAN_DWORD( ( (TPM20_Header_In *)command_buffer )->commandCode );
 
-    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
     {
 #ifdef DEBUG
         (*printfFunction)(NO_PREFIX, "\n" );
         if( commandCode >= TPM_CC_NV_UndefineSpaceSpecial && commandCode <= TPM_CC_PolicyNvWritten )     
-            (*printfFunction)(rmDebugPrefix, "Cmd sent: %s\n", commandCodeStrings[ commandCode - TPM_CC_FIRST ] );            
+            (*printfFunction)(rmDebugPrefix, "Cmd sent on socket #0x%x: %s\n", TCTI_CONTEXT_INTEL->tpmSock, commandCodeStrings[ commandCode - TPM_CC_FIRST ] );            
         else
-            (*printfFunction)(rmDebugPrefix, "Cmd sent: 0x%4.4x\n", CHANGE_ENDIAN_DWORD(commandCode ) );
+            (*printfFunction)(rmDebugPrefix, "Cmd sent on socket #0x%x: 0x%4.4x\n", TCTI_CONTEXT_INTEL->tpmSock, CHANGE_ENDIAN_DWORD(commandCode ) );
 #endif
-#ifdef DEBUG_SOCKETS
-        (*printfFunction)(rmDebugPrefix, "Command sent on socket #0x%x: %s\n", TCTI_CONTEXT_INTEL->tpmSock, commandCodeStrings[ commandCode - TPM_CC_FIRST ]  );
-#endif        
     }
     // Size TPM 1.2 and TPM 2.0 headers overlap exactly, we can use
     // either 1.2 or 2.0 header to get the size.
@@ -190,7 +187,7 @@ TSS2_RC SocketSendTpmCommand(
 #endif
     
 #ifdef DEBUG
-    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
     {
         (*printfFunction)(rmDebugPrefix, "Locality = %d", ( (TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->status.locality );
     }
@@ -209,7 +206,7 @@ TSS2_RC SocketSendTpmCommand(
         goto returnFromSocketSendTpmCommand;
     
 #ifdef DEBUG
-    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
     {
         DEBUG_PRINT_BUFFER( command_buffer, cnt1 );
     }
@@ -250,7 +247,7 @@ TSS2_RC SocketCancel(
         if( rval == TSS2_RC_SUCCESS )
         {
             rval = (TSS2_RC)PlatformCommand( tctiContext, MS_SIM_CANCEL_OFF );
-            if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+            if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
             {
                 (*printfFunction)(NO_PREFIX, "%s sent cancel ON command:\n", interfaceName );
             }
@@ -443,14 +440,11 @@ TSS2_RC SocketReceiveTpmResponse(
     }
     else
     {
-        if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED &&
+        if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED &&
                 ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->responseSize > 0 )
         {
 #ifdef DEBUG
-            (*printfFunction)( rmDebugPrefix, "Response Received: " );
-#endif
-#ifdef DEBUG_SOCKETS
-            (*printfFunction)( rmDebugPrefix, "from socket #0x%x:\n", TCTI_CONTEXT_INTEL->tpmSock );
+            (*printfFunction)( rmDebugPrefix, "Response Received from socket #0x%x: ", TCTI_CONTEXT_INTEL->tpmSock );
 #endif
         }
         
@@ -474,7 +468,7 @@ TSS2_RC SocketReceiveTpmResponse(
             goto retSocketReceiveTpmResponse;
 
 #ifdef DEBUG
-        if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+        if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
         {
             DEBUG_PRINT_BUFFER( response_buffer, ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->responseSize );
         }
@@ -504,7 +498,7 @@ TSS2_RC SocketReceiveTpmResponse(
         PlatformCommand( tctiContext, MS_SIM_CANCEL_OFF );
     }
 
-    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel == TSS2_TCTI_DEBUG_MSG_ENABLED )
+    if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
     {
 //        (*printfFunction)(NO_PREFIX,  "%s sent cancel OFF command:\n", interfaceName );
     }

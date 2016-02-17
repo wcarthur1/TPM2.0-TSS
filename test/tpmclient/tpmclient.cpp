@@ -7617,7 +7617,7 @@ void GetCapabilityTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext, CAP
                     rval = Tss2_Sys_GetCapability( sysContext, &sessionsData, 
                             capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
                             NUM_CAPABILITES, &moreData, &capabilityData, &sessionsDataOut );
-
+ 
                     // Roll nonces for response
                     RollNonces( auditSession, &sessionsDataOut.rspAuths[0]->nonce );
 
@@ -7854,8 +7854,49 @@ void GetCapabilityTests()
     // What happens if a connection is killed and then re-created with the same socket #?  Is it seen as the same connection?
     // Yes, I think so, but all of it's objects and sessions should have disappeared.
     
-//    GetCapabilityTest( auditSessionsConnection1[0], otherSysContext, &capabilityTestResultsNoAuditConnection2 );
+    rval = TeardownTctiResMgrContext( rmInterfaceConfig, otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    CheckPassed( rval );
+    
+    TeardownSysContext( &otherSysContext );
+    
+    rval = InitTctiResMgrContext( rmInterfaceConfig, &otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    if( rval != TSS2_RC_SUCCESS )
+    {
+        TpmClientPrintf( 0, "Resource Mgr, %s, failed initialization: 0x%x.  Exiting...\n", resMgrInterfaceInfo.shortName, rval );
+        Cleanup();
+        return;
+    }
+    else
+    {
+        (( TSS2_TCTI_CONTEXT_INTEL *)otherResMgrTctiContext )->status.debugMsgLevel = debugLevel;
+    }
+    
+    otherSysContext = InitSysContext( 0, otherResMgrTctiContext, &abiVersion );
+    if( otherSysContext == 0 )
+    {
+        InitSysContextFailure();
+    }
+    
+    for( i = 0; i < numSessionsCreatedConnection1; i++ )
+    {
+        rval = EndAuthSession( auditSessionsConnection1[i] );
+    }
 
+    for( i = 0; i < numSessionsCreatedConnection2; i++ )
+    {
+        rval = EndAuthSession( auditSessionsConnection2[i] );
+    }
+
+    rval = StartAuthSessionWithParams( &auditSessionsConnection2[0], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
+    CheckPassed( rval );
+    
+    GetCapabilityTest( auditSessionsConnection2[0], otherSysContext, capabilityTestResultsNoAuditConnection2 );
+
+    GetCapabilityTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection2 );
+
+    rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[0]->sessionHandle );
+    rval = EndAuthSession( auditSessionsConnection1[0] );
+#if 0    
     for( i = 0; i < numSessionsCreatedConnection1; i++ )
     {
         rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
@@ -7877,8 +7918,8 @@ void GetCapabilityTests()
     {
         rval = Tss2_Sys_FlushContext( otherSysContext, noAuditTransientConnection2[i] );
     }
-
-        
+#endif
+    
 }
 
 void TpmTest()

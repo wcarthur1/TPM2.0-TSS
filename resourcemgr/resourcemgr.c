@@ -861,6 +861,7 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
             if( ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_HMAC_SESSION ||
                 ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_POLICY_SESSION )
             {
+#if 0                
                 // Flush the session.
                 rval = Tss2_Sys_FlushContext( resMgrSysContext, entryPtr->realHandle );
                 if( rval != TSS2_RC_SUCCESS )
@@ -869,7 +870,9 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                     break;
                 }
                 else
+#endif                    
                 {
+#if 1                   
                     oldEntryPtr = entryPtr;
                     entryPtr = entryPtr->nextEntry;
                     rval = RemoveEntry( oldEntryPtr );
@@ -878,6 +881,7 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                         SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
                         break;
                     }
+#endif                    
                 }
             }
             else
@@ -2782,7 +2786,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
         rval = recvBytes( serverStruct->connectSock, (unsigned char*) &sendCmd, 4 );
         if( rval != TSS2_RC_SUCCESS )
         {
-            returnValue = 1;
+            returnValue = 2;
             CloseOutFile( &outFp );
             goto tpmCmdDone;
         }
@@ -2791,11 +2795,11 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 
         if( sendCmd == TPM_SESSION_END )
         {
-            returnValue = 1;
+            returnValue = 3;
         }
         else if( sendCmd != MS_SIM_TPM_SEND_COMMAND )
         {
-            returnValue = 1;
+            returnValue = 4;
         }
         else
         {
@@ -2885,7 +2889,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             if( rval != TSS2_RC_SUCCESS )
             {
                 CloseOutFile( &outFp );
-                returnValue = 1;
+                returnValue = 5;
                 goto tpmCmdDone;
             }
 
@@ -2896,7 +2900,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             if( rval != TSS2_RC_SUCCESS )
             {
                 CloseOutFile( &outFp );
-                returnValue = 1;
+                returnValue = 6;
                 goto tpmCmdDone;
             }
 
@@ -2905,11 +2909,11 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             if( rval != TSS2_RC_SUCCESS )
             {
                 CloseOutFile( &outFp );
-                returnValue = 1;
+                returnValue = 7;
                 goto tpmCmdDone;
             }
         }
-        if( returnValue == 1 )
+        if( returnValue != 0 )
             break;
         
         CloseOutFile( &outFp );
@@ -2918,7 +2922,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 
 tpmCmdDone:
 
-    printf( "TpmCmdServer died (%s), rval: 0x%8.8x, socket: 0x%x.\n", serverStruct->serverName, rval, serverStruct->connectSock );
+    ResMgrPrintf( RM_PREFIX, "TpmCmdServer died (%s), rval: 0x%8.8x, returnValue: %8.8x, socket: 0x%x.\n", serverStruct->serverName, rval, returnValue, serverStruct->connectSock );
 
     (void)FlushSessionsAndClearTable( serverStruct->connectSock );
 
@@ -3211,7 +3215,7 @@ TSS2_RC TeardownResMgr(
     
     ResMgrPrintf( NO_PREFIX, "Tearing down Resource Manager\n" );
 
-    rval = FlushSessionsAndClearTable( ALL_CONNECTIONS );
+//    rval = FlushSessionsAndClearTable( ALL_CONNECTIONS );
 
 #if __linux || __unix
     if( !simulator )

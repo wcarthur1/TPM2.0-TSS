@@ -259,6 +259,9 @@ TPM_RC StartAuthSessionWithParams( SESSION **session,
 {
     TPM_RC rval;
     SESSION_LIST_ENTRY *sessionEntry;
+    TPM2B_NONCE zeroSizedNonce;
+
+    zeroSizedNonce.b.size = 0;
     
     rval = AddSession( &sessionEntry );
     if( rval == TSS2_RC_SUCCESS )
@@ -269,6 +272,9 @@ TPM_RC StartAuthSessionWithParams( SESSION **session,
         (*session)->bind = bind;
         (*session)->tpmKey = tpmKey;
 
+        // Init nonceNewer, nonceTpmDecrypt, and nonceTpmEncrypt;
+        CopySizedByteBuffer( &(*session)->nonceNewer.b, &( zeroSizedNonce.b ) );
+        
         // Copy nonceCaller to nonceOlder in session struct.
         // This will be used as nonceCaller when StartAuthSession
         // is called.
