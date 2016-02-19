@@ -7422,6 +7422,35 @@ CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
     { 0xffffffff, 1, },
 };
 
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded3 = 1;
+UINT32 noAuditLoadedAvail3 = 9;
+UINT32 noAuditActive3 = 1;
+UINT32 noAuditActiveAvail3 = 9;
+UINT32 noAuditTransientAvail3 = 0;
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientConnection3[10] = { };
+UINT32 noAuditLoadedConnection3[10] = { };
+
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection3[] =
+{
+    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection3[0] },
+    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection3[0] },
+    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ TPM_PT_MEMORY, 1, &noAuditMemory },
+    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { TPM_PT_HR_LOADED, 1, &noAuditLoaded3 },
+    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail3 }, 
+    { TPM_PT_HR_ACTIVE, 1, &noAuditActive3 },
+    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail3 },
+    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail3 },
+    { 0xffffffff, 1, },
+};
+
 void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 *expectedResult, UINT32 *actualResult, UINT8 resultNum )
 {
 	UINT32 i;
@@ -7481,8 +7510,8 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
         {
             if( capabilityData->data.handles.count != expectedResultStruct->resultsArrayCount )
             {
-                TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property, counts not the same, expected/actual: = 0x%8.8x/0x%8.8x\n",
-                        expectedResultStruct->resultsArrayCount, capabilityData->data.handles.count );
+                TpmClientPrintf( NO_PREFIX,  "Virtualized caps test failure, capability 0x%8.8x/property 0x%8.8x, counts not the same, expected/actual: = 0x%8.8x/0x%8.8x\n",
+                        capabilityData->capability, capabilityData->data.handles.handle[0], expectedResultStruct->resultsArrayCount, capabilityData->data.handles.count );
                 Cleanup();
             }
             for( i = 0; i < capabilityData->data.handles.count; i++ )
@@ -7768,7 +7797,7 @@ void GetCapabilityTests()
         }
     }
 
-    // Need to flush two, so that HMAC generation functions for audit sessions can load a key and start an HMAC sequence.
+    // Need to flush two transient objects, so that HMAC generation functions for audit sessions can load a key and start an HMAC sequence.
     rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[ capabilityTestResultsNoAuditConnection1[0].resultsArrayCount - 1 ] );
     CheckPassed( rval );
     capabilityTestResultsNoAuditConnection1[0].resultsArrayCount--;
@@ -7877,48 +7906,35 @@ void GetCapabilityTests()
         InitSysContextFailure();
     }
     
-    for( i = 0; i < numSessionsCreatedConnection1; i++ )
-    {
-        rval = EndAuthSession( auditSessionsConnection1[i] );
-    }
-
     for( i = 0; i < numSessionsCreatedConnection2; i++ )
     {
         rval = EndAuthSession( auditSessionsConnection2[i] );
     }
-
+ 
     rval = StartAuthSessionWithParams( &auditSessionsConnection2[0], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
     CheckPassed( rval );
+    noAuditLoadedConnection3[0] = auditSessionsConnection2[0]->sessionHandle;
+    capabilityTestResultsNoAuditConnection3[1].resultsArrayCount++;
     
     GetCapabilityTest( auditSessionsConnection2[0], otherSysContext, capabilityTestResultsNoAuditConnection2 );
 
-    GetCapabilityTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection2 );
+    GetCapabilityTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection3 );
 
-    rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[0]->sessionHandle );
-    rval = EndAuthSession( auditSessionsConnection1[0] );
-#if 0    
+    rval = TeardownTctiResMgrContext( rmInterfaceConfig, otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    CheckPassed( rval );
+
     for( i = 0; i < numSessionsCreatedConnection1; i++ )
     {
-        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
-        rval = EndAuthSession( auditSessionsConnection1[i] );
-    }
-
-    for( i = 0; i < numSessionsCreatedConnection2; i++ )
-    {
-        rval = Tss2_Sys_FlushContext( otherSysContext, auditSessionsConnection2[i]->sessionHandle );
-        rval = EndAuthSession( auditSessionsConnection2[i] );
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[activeSessionsNum + i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection1[activeSessionsNum + i] );
     }
 
     for( i = 0; i < CONNECTION1_OBJECTS; i++ )
     {
         rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[i] );
     }
-
-    for( i = 0; i < CONNECTION2_OBJECTS; i++ )
-    {
-        rval = Tss2_Sys_FlushContext( otherSysContext, noAuditTransientConnection2[i] );
-    }
-#endif
+    
+    TeardownSysContext( &otherSysContext );
     
 }
 

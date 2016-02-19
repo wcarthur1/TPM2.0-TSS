@@ -48,6 +48,20 @@
 #include "tss2_tcti.h"
 #include "tss2_tcti_util.h"
 
+
+#ifdef  _WIN32
+typedef HANDLE TPM_MUTEX;
+#elif __linux || __unix
+#include semaphore.h
+typedef sem_t TPM_MUTEX;
+#else
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif                                    
+
+#ifndef SAPI_CLIENT    
+extern TPM_MUTEX tpmMutex;
+#endif
+
 TSS2_RC PlatformCommand(
     TSS2_TCTI_CONTEXT *tctiContext,     /* in */
     char cmd )
@@ -56,6 +70,16 @@ TSS2_RC PlatformCommand(
     char sendbuf[] = { 0x0,0x0,0x0,0x0 };
     char recvbuf[] = { 0x0, 0x0, 0x0, 0x0 };
 	TSS2_RC rval = TSS2_RC_SUCCESS;
+#ifndef SAPI_CLIENT
+#ifdef  _WIN32
+    DWORD mutexWaitRetVal;
+#elif __linux || __unix
+    int mutexWaitRetVal;
+    struct timespec semWait = { 2, 0 );
+#else
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif             
+#endif
 
     if( simulator )
     {
@@ -63,40 +87,87 @@ TSS2_RC PlatformCommand(
 
         OpenOutFile( &outFp );
 
-        // Send the command
-        iResult = send( TCTI_CONTEXT_INTEL->otherSock, sendbuf, 4, 0 );
+#ifndef SAPI_CLIENT    
+        // Critical section starts here
+#ifdef  _WIN32
+        mutexWaitRetVal = WaitForSingleObject( tpmMutex, 2000 );
 
-        if (iResult == SOCKET_ERROR) {
-            (*printfFunction)(NO_PREFIX, "send failed with error: %d\n", WSAGetLastError() );
-            rval = TSS2_TCTI_RC_IO_ERROR;
-        }
-        else
+        if( mutexWaitRetVal != WAIT_OBJECT_0 )
         {
-#ifdef DEBUG_SOCKETS
-            (*printfFunction)( rmDebugPrefix, "Send Bytes to socket #0x%x: \n", TCTI_CONTEXT_INTEL->otherSock );
-            DebugPrintBuffer( (UINT8 *)sendbuf, 4 );
-#endif
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+            rval = TSS2_TCTI_RC_TRY_AGAIN;
+        }
+#elif __linux || __unix
+        mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+        if( mutexWaitRetVal != 0 )
+        {
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", errno );
+            rval = TSS2_TCTI_RC_TRY_AGAIN;
+        }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif 
+        else
+#endif 
+        {
+#ifndef SAPI_CLIENT    
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, acquired mutex\n" );
+#endif            
+            // Send the command
+            iResult = send( TCTI_CONTEXT_INTEL->otherSock, sendbuf, 4, 0 );
 
-            // Read result
-            iResult = recv( TCTI_CONTEXT_INTEL->otherSock, recvbuf, 4, 0);
             if (iResult == SOCKET_ERROR) {
-                (*printfFunction)(NO_PREFIX, "In PlatformCommand, recv failed (socket: 0x%x) with error: %d\n",
-                        TCTI_CONTEXT_INTEL->otherSock, WSAGetLastError() );
-                rval = TSS2_TCTI_RC_IO_ERROR;
-            }
-            else if( recvbuf[0] != 0 || recvbuf[1] != 0 || recvbuf[2] != 0 || recvbuf[3] != 0 )
-            {
-                (*printfFunction)(NO_PREFIX, "PlatformCommand failed with error: %d\n", recvbuf[3] );
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, send failed with error: %d\n", WSAGetLastError() );
                 rval = TSS2_TCTI_RC_IO_ERROR;
             }
             else
             {
 #ifdef DEBUG_SOCKETS
-                (*printfFunction)(NO_PREFIX, "Receive bytes from socket #0x%x: \n", TCTI_CONTEXT_INTEL->otherSock );
-                DebugPrintBuffer( (UINT8 *)recvbuf, 4 );
+                (*printfFunction)( rmDebugPrefix, "In PlatformCommand, send Bytes to socket #0x%x: \n", TCTI_CONTEXT_INTEL->otherSock );
+                DebugPrintBuffer( (UINT8 *)sendbuf, 4 );
 #endif
+
+                // Read result
+                iResult = recv( TCTI_CONTEXT_INTEL->otherSock, recvbuf, 4, 0);
+                if (iResult == SOCKET_ERROR) {
+                    (*printfFunction)(NO_PREFIX, "In PlatformCommand, recv failed (socket: 0x%x) with error: %d\n",
+                            TCTI_CONTEXT_INTEL->otherSock, WSAGetLastError() );
+                    rval = TSS2_TCTI_RC_IO_ERROR;
+                }
+                else if( recvbuf[0] != 0 || recvbuf[1] != 0 || recvbuf[2] != 0 || recvbuf[3] != 0 )
+                {
+                    (*printfFunction)(NO_PREFIX, "PlatformCommand failed with error: %d\n", recvbuf[3] );
+                    rval = TSS2_TCTI_RC_IO_ERROR;
+                }
+                else
+                {
+#ifdef DEBUG_SOCKETS
+                    (*printfFunction)(NO_PREFIX, "In PlatformCommand, receive bytes from socket #0x%x: \n", TCTI_CONTEXT_INTEL->otherSock );
+                    DebugPrintBuffer( (UINT8 *)recvbuf, 4 );
+#endif
+                }
             }
         }
+
+#ifndef SAPI_CLIENT    
+        // Critical section ends here
+#ifdef  _WIN32
+        if( 0 == ReleaseMutex( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", GetLastError() );
+            rval = TSS2_TCTI_RC_TRY_AGAIN;
+        }
+#elif __linux || __unix
+        if( 0 != sem_post( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", errno );
+            rval = TSS2_TCTI_RC_TRY_AGAIN;
+        }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif
+        (*printfFunction)(NO_PREFIX, "In PlatformCommand, released mutex\n" );
+#endif        
 
         CloseOutFile( &outFp );
     }

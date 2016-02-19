@@ -38,7 +38,8 @@
 // NOTE:  uncomment following if you think you need to see all
 // socket communications.
 //
-//#define DEBUG_SOCKETS
+
+// #define DEBUG_SOCKETS
 
 #include <stdio.h>
 #include <stdlib.h>   // Needed for _wtoi
@@ -189,7 +190,7 @@ TSS2_RC SocketSendTpmCommand(
 #ifdef DEBUG
     if( ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext )->status.debugMsgLevel >= TSS2_TCTI_DEBUG_MSG_ENABLED )
     {
-        (*printfFunction)(rmDebugPrefix, "Locality = %d", ( (TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->status.locality );
+        (*printfFunction)(rmDebugPrefix, "Locality = %d\n", ( (TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->status.locality );
     }
 #endif
     
@@ -444,7 +445,7 @@ TSS2_RC SocketReceiveTpmResponse(
                 ((TSS2_TCTI_CONTEXT_INTEL *)tctiContext)->responseSize > 0 )
         {
 #ifdef DEBUG
-            (*printfFunction)( rmDebugPrefix, "Response Received from socket #0x%x: ", TCTI_CONTEXT_INTEL->tpmSock );
+            (*printfFunction)( rmDebugPrefix, "Response Received from socket #0x%x: \n", TCTI_CONTEXT_INTEL->tpmSock );
 #endif
         }
         

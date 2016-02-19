@@ -40,6 +40,7 @@
 #ifdef  _WIN32
 typedef HANDLE THREAD_TYPE; 
 #define MAX_COMMAND_LINE_ARGS 6
+typedef HANDLE TPM_MUTEX;
 
 #elif __linux || __unix
 
@@ -50,7 +51,10 @@ typedef HANDLE THREAD_TYPE;
 #include <pthread.h>
 typedef pthread_t THREAD_TYPE ;
 #define ExitThread pthread_exit
-#define CloseHandle( handle ) 
+#define CloseHandle( handle )
+
+#include semaphore.h
+typedef sem_t TPM_MUTEX;
 
 #define MAX_COMMAND_LINE_ARGS 7
 #else    
@@ -58,6 +62,8 @@ typedef pthread_t THREAD_TYPE ;
 #endif                
 
 #define DEBUG_RESMGR_INIT        
+
+TPM_MUTEX tpmMutex;
 
 extern TSS2_RC GetCommands( TSS2_SYS_CONTEXT *resMgrSysContext, TPML_CCA **supportedCommands );
 extern UINT8 GetCommandAttributes( TPM_CC commandCode, TPML_CCA *supportedCommands, TPMA_CC *cmdAttributes );
@@ -853,6 +859,8 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
 {
     RESOURCE_MANAGER_ENTRY *entryPtr, *oldEntryPtr;
     TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    rmDebugPrefix = 1;
     
     for( entryPtr = entryList; entryPtr != 0 && rval == TSS2_RC_SUCCESS; )
     {
@@ -861,7 +869,6 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
             if( ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_HMAC_SESSION ||
                 ( entryPtr->virtualHandle & HR_RANGE_MASK ) == HR_POLICY_SESSION )
             {
-#if 0                
                 // Flush the session.
                 rval = Tss2_Sys_FlushContext( resMgrSysContext, entryPtr->realHandle );
                 if( rval != TSS2_RC_SUCCESS )
@@ -869,24 +876,15 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                     SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
                     break;
                 }
-                else
-#endif                    
-                {
-#if 1                   
-                    oldEntryPtr = entryPtr;
-                    entryPtr = entryPtr->nextEntry;
-                    rval = RemoveEntry( oldEntryPtr );
-                    if( rval != TSS2_RC_SUCCESS )
-                    {
-                        SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
-                        break;
-                    }
-#endif                    
-                }
             }
-            else
+
+            oldEntryPtr = entryPtr;
+            entryPtr = entryPtr->nextEntry;
+            rval = RemoveEntry( oldEntryPtr );
+            if( rval != TSS2_RC_SUCCESS )
             {
-                entryPtr = entryPtr->nextEntry;
+                SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+                break;
             }
         }
         else
@@ -894,6 +892,8 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
             entryPtr = entryPtr->nextEntry;
         }        
     }
+    rmDebugPrefix = 0;
+    
     return rval;
 }
 
@@ -2722,7 +2722,6 @@ exitResourceMgrReceiveTpmResponse:
     
     rmDebugPrefix = 0;
 
-
     return rval;
 }
 
@@ -2744,6 +2743,14 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     UINT8 returnValue = 0;
     fd_set readFds;
     int iResult;
+#ifdef  _WIN32
+    DWORD mutexWaitRetVal;
+#elif __linux || __unix
+    int mutexWaitRetVal;
+    struct timespec semWait = { 2, 0 );
+#else
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif                                    
 
     for(;;)
     {
@@ -2860,6 +2867,33 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 continue;
             }
 
+            // Critical section starts here
+#ifdef  _WIN32
+            mutexWaitRetVal = WaitForSingleObject( tpmMutex, 2000 );
+
+            if( mutexWaitRetVal != WAIT_OBJECT_0 )
+            {
+                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+                CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
+                SendErrorResponse( serverStruct->connectSock ); 
+                CloseOutFile( &outFp );
+                continue;
+            }
+#elif __linux || __unix
+            mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+            if( mutexWaitRetVal != 0 )
+            {
+                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
+                CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
+                SendErrorResponse( serverStruct->connectSock ); 
+                CloseOutFile( &outFp );
+                continue;
+            }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex\n" );
+            
             // Send TPM command to TPM.
             ((TSS2_TCTI_CONTEXT_INTEL *)downstreamTctiContext)->currentConnectSock = serverStruct->connectSock;
             rval = ResourceMgrSendTpmCommand( downstreamTctiContext, numBytes, cmdBuffer );
@@ -2868,7 +2902,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 CreateErrorResponse( TSS2_TCTI_RC_IO_ERROR );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );
-                continue;
+                goto tpmCmdServerReleaseMutex;
             }
 
             // Receive response from TPM.
@@ -2879,7 +2913,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 CreateErrorResponse( TSS2_TCTI_RC_IO_ERROR );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );
-                continue;
+                goto tpmCmdServerReleaseMutex;
             }
 
             numBytes = CHANGE_ENDIAN_DWORD( numBytes );
@@ -2915,7 +2949,27 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
         }
         if( returnValue != 0 )
             break;
-        
+
+tpmCmdServerReleaseMutex:        
+
+        // Critical section ends here
+#ifdef  _WIN32
+        if( 0 == ReleaseMutex( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", GetLastError() );
+            goto tpmCmdDone;
+        }
+#elif __linux || __unix
+        if( 0 != sem_post( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
+            goto tpmCmdDone;
+        }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif
+        (*printfFunction)(NO_PREFIX, "In TpmCmdServer, released mutex\n" );
+                
         CloseOutFile( &outFp );
     }
 
@@ -2924,8 +2978,51 @@ tpmCmdDone:
 
     ResMgrPrintf( RM_PREFIX, "TpmCmdServer died (%s), rval: 0x%8.8x, returnValue: %8.8x, socket: 0x%x.\n", serverStruct->serverName, rval, returnValue, serverStruct->connectSock );
 
+    if( sendCmd == TPM_SESSION_END )
+    {
+        // Critical section starts here
+#ifdef  _WIN32
+        mutexWaitRetVal = WaitForSingleObject( tpmMutex, 2000 );
+
+        if( mutexWaitRetVal != WAIT_OBJECT_0 )
+        {
+            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+        }
+#elif __linux || __unix
+        mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+        if( mutexWaitRetVal != 0 )
+        {
+            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
+        }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif
+        (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex\n" );
+    }
+    
     (void)FlushSessionsAndClearTable( serverStruct->connectSock );
 
+    if( returnValue != 0 )
+    {
+#ifdef  _WIN32
+        if( 0 == ReleaseMutex( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", GetLastError() );
+        }
+#elif __linux || __unix
+        if( 0 != sem_post( tpmMutex ) )
+        {
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
+        }
+#else    
+#error Unsupported OS--need to add OS-specific support for threading here.        
+#endif
+        else
+        {
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, released mutex\n" );
+        }
+    }
+    
     closesocket( serverStruct->connectSock );
 	CloseHandle( serverStruct->threadHandle );
     (*rmFree)( serverStruct );
@@ -3003,7 +3100,7 @@ UINT8 OtherCmdServer( SERVER_STRUCT *serverStruct )
     fd_set readFds;
     int iResult;
     
-     for(;;)
+    for(;;)
     {
         FD_ZERO( &readFds );
         FD_SET( serverStruct->connectSock, &readFds );
@@ -3467,7 +3564,10 @@ int main(int argc, char* argv[])
     SERVER_STRUCT tpmCmdServerStruct = { 0, (SERVER_FN)&TpmCmdServer, "TPM CMD" };
     THREAD_TYPE sockServerThread;
     UINT8 tpmHostNameSpecified = 0, tpmPortSpecified = 0;
-    
+#ifdef  _WIN32
+	SECURITY_ATTRIBUTES mutexAttributes = { sizeof( SECURITY_ATTRIBUTES ), NULL, TRUE };
+#endif
+            
     OpenOutFile( &outFp );
     
     setvbuf (stdout, NULL, _IONBF, BUFSIZ);
@@ -3624,7 +3724,27 @@ int main(int argc, char* argv[])
         InitSysContextFailure();
         goto initDone;
     }
-    
+
+#ifdef  _WIN32
+    // Create mutex.
+    tpmMutex = CreateMutex( &mutexAttributes, FALSE, NULL );
+    if( tpmMutex == NULL )
+    {
+        printf( "Resource Mgr failed to create mutex.  Exiting...\n", rval );
+        return( 1 );
+    }
+#elif __linux || __unix
+    // Create semaphore
+    rval = sem_init( &tpmMutex, 0, 1 );
+    if( rval != 0 )
+    {
+        printf( "Resource Mgr failed to create mutex, error #%d.  Exiting...\n", rval );
+        return( 1 );
+    }        
+#else
+    #error Unsupported OS--need to add OS-specific support for threading here.        
+#endif        
+
     rval = InitResourceMgr( DBG_COMMAND_RM_TABLES );
     CloseOutFile( &outFp );
     if( rval != TSS2_RC_SUCCESS )
@@ -3659,32 +3779,32 @@ int main(int argc, char* argv[])
     tpmCmdServerStruct.connectSock = appTpmSock;
     
     // Start socket servers for upstream interface.
-
 #ifdef  _WIN32
     if( NULL == ( sockServerThread = CreateThread( NULL, 0,
             (LPTHREAD_START_ROUTINE)SockServer,
             (LPVOID)&otherCmdServerStruct, 0, NULL ) ) )
     {
         printf( "Resource Mgr failed to create OTHER command server thread.  Exiting...\n" );
+        return( 1 );
     }
+
 #elif __linux || __unix
     rval = pthread_create( &sockServerThread, 0, (void *)SockServer, &otherCmdServerStruct );
     if( rval != 0 )
     {
         printf( "Resource Mgr failed to create OTHER command server thread, error #%d.  Exiting...\n", rval );
+        return( 1 );
     }
-#else
-#error Unsupported OS--need to add OS-specific support for threading here.        
-#endif        
-    else
-    {
-        SockServer( (LPVOID)&tpmCmdServerStruct );
-    }
+#endif
 
+    SockServer( (LPVOID)&tpmCmdServerStruct );
+    
     CloseHandle( sockServerThread );
 
     CloseSockets( appOtherSock, appTpmSock );
     
+    CloseHandle( tpmMutex );
+
     TeardownSysContext( &resMgrSysContext );
 
     TeardownSysContext( &tempSysContext );
