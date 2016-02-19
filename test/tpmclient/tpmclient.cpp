@@ -7710,7 +7710,7 @@ void GetCapabilityTests()
     char otherResMgrInterfaceName[] = "Other Resource Manager";
     UINT32 i, numSessionsCreatedConnection1, numSessionsCreatedConnection2;
     TPMS_CAPABILITY_DATA capabilityData;
-    UINT32 activeSessionsNum;
+    UINT32 activeSessionsNumConnection1, activeSessionsNumConnection2;
     TPMS_CONTEXT context;
     
     TpmClientPrintf( NO_PREFIX,  "\nGetCapability Tests:\n" );
@@ -7746,7 +7746,7 @@ void GetCapabilityTests()
             TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
             1, 0, &capabilityData, 0 );
     CheckPassed( rval );
-    capabilityTestResultsNoAuditConnection1[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+    capabilityTestResultsNoAuditConnection1[1].resultsArrayCount = activeSessionsNumConnection1 = capabilityData.data.tpmProperties.tpmProperty[0].value;
 
     rval = Tss2_Sys_GetCapability( sysContext, 0, 
             TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
@@ -7763,7 +7763,7 @@ void GetCapabilityTests()
     for( i = 0, numSessionsCreatedConnection1 = 0; i < CONNECTION1_SESSIONS; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection1[numSessionsCreatedConnection1], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
-        if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
+        if( ( activeSessionsNumConnection1 + i ) >= RM_LOADED_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
@@ -7771,7 +7771,7 @@ void GetCapabilityTests()
         else
         {
             CheckPassed( rval );
-            noAuditLoadedConnection1[activeSessionsNum + numSessionsCreatedConnection1] = auditSessionsConnection1[numSessionsCreatedConnection1]->sessionHandle;
+            noAuditLoadedConnection1[activeSessionsNumConnection1 + numSessionsCreatedConnection1] = auditSessionsConnection1[numSessionsCreatedConnection1]->sessionHandle;
             capabilityTestResultsNoAuditConnection1[1].resultsArrayCount++;
             numSessionsCreatedConnection1++;
         }
@@ -7814,7 +7814,7 @@ void GetCapabilityTests()
             1, 0, &capabilityData, 0 );
     CheckPassed( rval );
 
-	capabilityTestResultsNoAuditConnection2[1].resultsArrayCount = activeSessionsNum = capabilityData.data.tpmProperties.tpmProperty[0].value;
+	capabilityTestResultsNoAuditConnection2[1].resultsArrayCount = activeSessionsNumConnection2 = capabilityData.data.tpmProperties.tpmProperty[0].value;
     
     rval = Tss2_Sys_GetCapability( otherSysContext, 0, 
             TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
@@ -7831,14 +7831,14 @@ void GetCapabilityTests()
     for( i = 0, numSessionsCreatedConnection2 = 0; i < CONNECTION2_SESSIONS; i++ )
     {
         rval = StartAuthSessionWithParams( &auditSessionsConnection2[numSessionsCreatedConnection2], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
-        if( ( activeSessionsNum + i ) >= RM_LOADED_MIN )
+        if( ( activeSessionsNumConnection2 + i ) >= RM_LOADED_MIN )
         {
             CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
         }
         else
         {
             CheckPassed( rval );
-            noAuditLoadedConnection2[activeSessionsNum + numSessionsCreatedConnection2] = auditSessionsConnection2[numSessionsCreatedConnection2]->sessionHandle;
+            noAuditLoadedConnection2[activeSessionsNumConnection2 + numSessionsCreatedConnection2] = auditSessionsConnection2[numSessionsCreatedConnection2]->sessionHandle;
             capabilityTestResultsNoAuditConnection2[1].resultsArrayCount++;
             numSessionsCreatedConnection2++;
         }
@@ -7925,11 +7925,17 @@ void GetCapabilityTests()
 
     for( i = 0; i < numSessionsCreatedConnection1; i++ )
     {
-        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[activeSessionsNum + i]->sessionHandle );
-        rval = EndAuthSession( auditSessionsConnection1[activeSessionsNum + i] );
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection1[i] );
     }
 
-    for( i = 0; i < CONNECTION1_OBJECTS; i++ )
+    for( i = 0; i < numSessionsCreatedConnection2; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection2[activeSessionsNumConnection2 + i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection2[activeSessionsNumConnection2 + i] );
+    }
+
+    for( i = 0; i < capabilityTestResultsNoAuditConnection1[0].resultsArrayCount; i++ )
     {
         rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientConnection1[i] );
     }
