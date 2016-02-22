@@ -70,7 +70,9 @@ TSS2_RC PlatformCommand(
     char sendbuf[] = { 0x0,0x0,0x0,0x0 };
     char recvbuf[] = { 0x0, 0x0, 0x0, 0x0 };
 	TSS2_RC rval = TSS2_RC_SUCCESS;
+    
 #ifndef SAPI_CLIENT
+    UINT8 mutexAcquired = 1;
 #ifdef  _WIN32
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
@@ -88,31 +90,41 @@ TSS2_RC PlatformCommand(
         OpenOutFile( &outFp );
 
 #ifndef SAPI_CLIENT    
-        // Critical section starts here
+        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF )
+        {
+            // Critical section starts here
 #ifdef  _WIN32
-        mutexWaitRetVal = WaitForSingleObject( tpmMutex, 2000 );
+            mutexWaitRetVal = WaitForSingleObject( tpmMutex, 2000 );
 
-        if( mutexWaitRetVal != WAIT_OBJECT_0 )
-        {
-            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", mutexWaitRetVal );
-            rval = TSS2_TCTI_RC_TRY_AGAIN;
-        }
+            if( mutexWaitRetVal != WAIT_OBJECT_0 )
+            {
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+                rval = TSS2_TCTI_RC_TRY_AGAIN;
+            }
 #elif __linux || __unix
-        mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
-        if( mutexWaitRetVal != 0 )
-        {
-            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", errno );
-            rval = TSS2_TCTI_RC_TRY_AGAIN;
-        }
+            mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+            if( mutexWaitRetVal != 0 )
+            {
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", errno );
+                rval = TSS2_TCTI_RC_TRY_AGAIN;
+            }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif 
+            else
+            {
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, acquired mutex\n" );
+                mutexAcquired = 1;
+            }
+        }
         else
-#endif 
         {
-#ifndef SAPI_CLIENT    
-            (*printfFunction)(NO_PREFIX, "In PlatformCommand, acquired mutex\n" );
-#endif            
+            mutexAcquired = 1;
+        }
+
+        if( mutexAcquired )
+#endif
+        {
             // Send the command
             iResult = send( TCTI_CONTEXT_INTEL->otherSock, sendbuf, 4, 0 );
 
@@ -150,25 +162,27 @@ TSS2_RC PlatformCommand(
         }
 
 #ifndef SAPI_CLIENT    
+        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF )
+        {
         // Critical section ends here
 #ifdef  _WIN32
-        if( 0 == ReleaseMutex( tpmMutex ) )
-        {
-            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", GetLastError() );
-            rval = TSS2_TCTI_RC_TRY_AGAIN;
-        }
+            if( 0 == ReleaseMutex( tpmMutex ) )
+            {
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", GetLastError() );
+                rval = TSS2_TCTI_RC_TRY_AGAIN;
+            }
 #elif __linux || __unix
-        if( 0 != sem_post( tpmMutex ) )
-        {
-            (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", errno );
-            rval = TSS2_TCTI_RC_TRY_AGAIN;
-        }
+            if( 0 != sem_post( tpmMutex ) )
+            {
+                (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", errno );
+                rval = TSS2_TCTI_RC_TRY_AGAIN;
+            }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
-        (*printfFunction)(NO_PREFIX, "In PlatformCommand, released mutex\n" );
+            (*printfFunction)(NO_PREFIX, "In PlatformCommand, released mutex\n" );
+        }
 #endif        
-
         CloseOutFile( &outFp );
     }
     return rval;
