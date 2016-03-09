@@ -1497,9 +1497,6 @@ void TestStartAuthSession()
 
     TPM2B_AUTH      hmac;
 
-    TPMS_CONTEXT    evictedSessionContext;
-    TPM_HANDLE   evictedHandle;
-    
     sessionDataArray[0] = &sessionData;
 
     sessionsDataIn.cmdAuths = &sessionDataArray[0];
@@ -7156,7 +7153,6 @@ TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHan
     TPMS_AUTH_RESPONSE sessionDataOut;
     TSS2_SYS_CMD_AUTHS sessionsData;
 
-    TPM2B_PRIVATE outPrivate = { { sizeof( TPM2B_PRIVATE ) - 2, } };
     TPM2B_PUBLIC outPublic = { { sizeof( TPM2B_PUBLIC ) - 2, } };
     TPM2B_CREATION_DATA creationData =  { { sizeof( TPM2B_CREATION_DATA ) - 2, } };
 	TPM2B_DIGEST creationHash = { { sizeof( TPM2B_DIGEST ) - 2, } };
@@ -7283,27 +7279,42 @@ typedef struct {
     char *capString;
 } CAPABILITY_TEST_STRING;
 
+char HT_TRANSIENT_STR[] = "TPM_HT_TRANSIENT";
+char HT_LOADED_SESSION_STR[] = "TPM_HT_LOADED_SESSION";
+char HR_TRANSIENT_MIN_STR[] = "TPM_PT_HR_TRANSIENT_MIN";
+char HR_LOADED_MIN_STR[] = "TPM_PT_HR_LOADED_MIN";
+char ACTIVE_SESSIONS_MAX_STR[] = "TPM_PT_ACTIVE_SESSIONS_MAX";
+char CONTEXT_GAP_MAX_STR[] = "TPM_PT_CONTEXT_GAP_MAX";
+char MEMORY_STR[] = "TPM_PT_MEMORY";
+char MAX_SESSION_CONTEXT_STR[] = "TPM_PT_MAX_SESSION_CONTEXT";
+char HR_LOADED_STR[] = "TPM_PT_HR_LOADED";
+char HR_LOADED_AVAIL_STR[] = "TPM_PT_HR_LOADED_AVAIL";
+char HR_ACTIVE_STR[] = "TPM_PT_HR_ACTIVE";
+char HR_ACTIVE_AVAIL_STR[] = "TPM_PT_HR_ACTIVE_AVAIL";
+char HR_TRANSIENT_AVAIL_STR[] = "TPM_PT_HR_TRANSIENT_AVAIL";
+
+
 CAPABILITY_TEST_STRING capabilityTestStrings[] =
 {
-    { (TPM_HT_TRANSIENT << HR_SHIFT), "TPM_HT_TRANSIENT" },
-    { (TPM_HT_LOADED_SESSION << HR_SHIFT), "TPM_HT_LOADED_SESSION" },
-    { TPM_PT_HR_TRANSIENT_MIN, "TPM_PT_HR_TRANSIENT_MIN" },
-    { TPM_PT_HR_LOADED_MIN, "TPM_PT_HR_LOADED_MIN" },
-    { TPM_PT_ACTIVE_SESSIONS_MAX, "TPM_PT_ACTIVE_SESSIONS_MAX" }, 
-    { TPM_PT_CONTEXT_GAP_MAX, "TPM_PT_CONTEXT_GAP_MAX" },
-    { TPM_PT_MEMORY, "TPM_PT_MEMORY" },
-    { TPM_PT_MAX_SESSION_CONTEXT, "TPM_PT_MAX_SESSION_CONTEXT" },
-    { TPM_PT_HR_LOADED, "TPM_PT_HR_LOADED" },
-    { TPM_PT_HR_LOADED_AVAIL, "TPM_PT_HR_LOADED_AVAIL" }, 
-    { TPM_PT_HR_ACTIVE, "TPM_PT_HR_ACTIVE" },
-    { TPM_PT_HR_ACTIVE_AVAIL, "TPM_PT_HR_ACTIVE_AVAIL" },
-    { TPM_PT_HR_TRANSIENT_AVAIL, "TPM_PT_HR_TRANSIENT_AVAIL" },
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), &HT_TRANSIENT_STR[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), &HT_LOADED_SESSION_STR[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, &HR_TRANSIENT_MIN_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, &HR_LOADED_MIN_STR[0] },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, &ACTIVE_SESSIONS_MAX_STR[0] }, 
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, &CONTEXT_GAP_MAX_STR[0] },
+    { (UINT32)TPM_PT_MEMORY, &MEMORY_STR[0] },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, &MAX_SESSION_CONTEXT_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED, &HR_LOADED_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, &HR_LOADED_AVAIL_STR[0] }, 
+    { (UINT32)TPM_PT_HR_ACTIVE, &HR_ACTIVE_STR[0] },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, &HR_ACTIVE_AVAIL_STR[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, &HR_TRANSIENT_AVAIL_STR[0] },
 };
 
 char *FindPropertyString( UINT32 property )
 {
     static char propertyString[100];
-    int i;
+    unsigned int i;
     
     strcpy( &propertyString[0], "" );
 
@@ -7335,21 +7346,21 @@ typedef struct {
 
 CAPABILITY_TEST_SETUP capabilityTestSetups[] =
 {
-    { TPM_CAP_HANDLES, (TPM_HT_TRANSIENT << HR_SHIFT) },
-    { TPM_CAP_HANDLES, (TPM_HT_LOADED_SESSION << HR_SHIFT) },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_MIN },
+    { (UINT32)TPM_CAP_HANDLES, (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT) },
+    { (UINT32)TPM_CAP_HANDLES, (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT) },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_TRANSIENT_MIN },
 #if 0  // Don't need these because we request a large number
        // of properties from previous type.     
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_MIN },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_ACTIVE_SESSIONS_MAX }, 
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_CONTEXT_GAP_MAX },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MEMORY },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_MAX_SESSION_CONTEXT },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_LOADED_AVAIL }, 
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE_AVAIL },
-    { TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_TRANSIENT_AVAIL },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_LOADED_MIN },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX }, 
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_CONTEXT_GAP_MAX },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_MEMORY },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_MAX_SESSION_CONTEXT },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_LOADED },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_LOADED_AVAIL }, 
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_ACTIVE },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_ACTIVE_AVAIL },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_TRANSIENT_AVAIL },
 #endif            
 };
 
@@ -7380,20 +7391,20 @@ UINT32 noAuditLoadedConnection1[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
 {
-    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection1[0] },
-    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection1[0] },
-    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
-    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
-    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
-    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
-	{ TPM_PT_MEMORY, 1, &noAuditMemory },
-    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
-    { TPM_PT_HR_LOADED, 1, &noAuditLoaded1 },
-    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail1 }, 
-    { TPM_PT_HR_ACTIVE, 1, &noAuditActive1 },
-    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail1 },
-    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail1 },
-    { 0xffffffff, 1, },
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection1[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection1[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded1 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail1 }, 
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive1 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail1 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail1 },
+    { (UINT32)0xffffffff, 1, },
 };
 
 // These are values that are dynamic and connection-specific.
@@ -7409,20 +7420,20 @@ UINT32 noAuditLoadedConnection2[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
 {
-    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection2[0] },
-    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection2[0] },
-    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
-    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
-    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
-    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
-	{ TPM_PT_MEMORY, 1, &noAuditMemory },
-    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
-    { TPM_PT_HR_LOADED, 1, &noAuditLoaded2 },
-    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail2 }, 
-    { TPM_PT_HR_ACTIVE, 1, &noAuditActive2 },
-    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail2 },
-    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail2 },
-    { 0xffffffff, 1, },
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection2[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection2[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded2 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail2 }, 
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive2 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail2 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail2 },
+    { (UINT32)0xffffffff, 1, },
 };
 
 // These are values that are dynamic and connection-specific.
@@ -7438,20 +7449,20 @@ UINT32 noAuditLoadedConnection3[10] = { };
 
 CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection3[] =
 {
-    { (TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection3[0] },
-    { (TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection3[0] },
-    { TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
-    { TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
-    { TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
-    { TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
-	{ TPM_PT_MEMORY, 1, &noAuditMemory },
-    { TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
-    { TPM_PT_HR_LOADED, 1, &noAuditLoaded3 },
-    { TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail3 }, 
-    { TPM_PT_HR_ACTIVE, 1, &noAuditActive3 },
-    { TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail3 },
-    { TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail3 },
-    { 0xffffffff, 1, },
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientConnection3[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedConnection3[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax }, 
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded3 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail3 }, 
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive3 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail3 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail3 },
+    { (UINT32)0xffffffff, 1, },
 };
 
 void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 *expectedResult, UINT32 *actualResult, UINT8 resultNum )
@@ -8094,7 +8105,7 @@ void TpmTest()
     rval = Tss2_Sys_FlushContext( sysContext, loadedSha1KeyHandle );
     CheckPassed( rval );
     
-endTests:    
+//endTests:    
     PlatformCommand( resMgrTctiContext, MS_SIM_POWER_OFF );
 }
 

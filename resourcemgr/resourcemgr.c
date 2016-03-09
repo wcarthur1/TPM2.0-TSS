@@ -53,7 +53,7 @@ typedef pthread_t THREAD_TYPE ;
 #define ExitThread pthread_exit
 #define CloseHandle( handle )
 
-#include semaphore.h
+#include <semaphore.h>
 typedef sem_t TPM_MUTEX;
 
 #define MAX_COMMAND_LINE_ARGS 7
@@ -2747,7 +2747,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
     int mutexWaitRetVal;
-    struct timespec semWait = { 2, 0 );
+    struct timespec semWait = { 2, 0 };
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif                                    
@@ -2882,7 +2882,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 continue;
             }
 #elif __linux || __unix
-            mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+            mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
 #ifdef DEBUG_MUTEX                
@@ -2964,7 +2964,7 @@ tpmCmdServerReleaseMutex:
             goto tpmCmdDone;
         }
 #elif __linux || __unix
-        if( 0 != sem_post( tpmMutex ) )
+        if( 0 != sem_post( &tpmMutex ) )
         {
             (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
             goto tpmCmdDone;
@@ -2993,7 +2993,7 @@ tpmCmdDone:
             ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
         }
 #elif __linux || __unix
-        mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+        mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
         if( mutexWaitRetVal != 0 )
         {
             ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
@@ -3014,7 +3014,7 @@ tpmCmdDone:
             (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", GetLastError() );
         }
 #elif __linux || __unix
-        if( 0 != sem_post( tpmMutex ) )
+        if( 0 != sem_post( &tpmMutex ) )
         {
             (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
         }
