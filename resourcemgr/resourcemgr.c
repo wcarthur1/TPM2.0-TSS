@@ -2873,7 +2873,9 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 
             if( mutexWaitRetVal != WAIT_OBJECT_0 )
             {
+#ifdef DEBUG_MUTEX                
                 ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+#endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );
@@ -2883,7 +2885,9 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
+#ifdef DEBUG_MUTEX                
                 ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
+#endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );

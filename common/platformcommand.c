@@ -52,7 +52,7 @@
 #ifdef  _WIN32
 typedef HANDLE TPM_MUTEX;
 #elif __linux || __unix
-#include semaphore.h
+#include <semaphore.h>
 typedef sem_t TPM_MUTEX;
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
@@ -77,7 +77,7 @@ TSS2_RC PlatformCommand(
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
     int mutexWaitRetVal;
-    struct timespec semWait = { 2, 0 );
+    struct timespec semWait = { 2, 0 };
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif             
@@ -90,7 +90,8 @@ TSS2_RC PlatformCommand(
         OpenOutFile( &outFp );
 
 #ifndef SAPI_CLIENT    
-        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF )
+        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF &&
+            cmd != MS_SIM_POWER_ON && cmd != MS_SIM_POWER_OFF )
         {
             // Critical section starts here
 #ifdef  _WIN32
@@ -98,22 +99,28 @@ TSS2_RC PlatformCommand(
 
             if( mutexWaitRetVal != WAIT_OBJECT_0 )
             {
+#ifdef DEBUG_MUTEX                
                 (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+#endif            
                 rval = TSS2_TCTI_RC_TRY_AGAIN;
             }
 #elif __linux || __unix
-            mutexWaitRetVal = sem_timedwait( tpmMutex, &semWait );
+            mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
+#ifdef DEBUG_MUTEX                
                 (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to acquire mutex error: %d\n", errno );
+#endif            
                 rval = TSS2_TCTI_RC_TRY_AGAIN;
             }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
-#endif 
+#endif         
             else
-            {
+            {  
+#ifdef DEBUG_MUTEX                
                 (*printfFunction)(NO_PREFIX, "In PlatformCommand, acquired mutex\n" );
+#endif                     
                 mutexAcquired = 1;
             }
         }
@@ -162,28 +169,35 @@ TSS2_RC PlatformCommand(
         }
 
 #ifndef SAPI_CLIENT    
-        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF )
+        if( cmd != MS_SIM_CANCEL_ON && cmd != MS_SIM_CANCEL_OFF &&
+            cmd != MS_SIM_POWER_ON && cmd != MS_SIM_POWER_OFF )
         {
         // Critical section ends here
 #ifdef  _WIN32
             if( 0 == ReleaseMutex( tpmMutex ) )
             {
+#ifdef DEBUG_MUTEX                
                 (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", GetLastError() );
+#endif            
                 rval = TSS2_TCTI_RC_TRY_AGAIN;
             }
 #elif __linux || __unix
-            if( 0 != sem_post( tpmMutex ) )
+            if( 0 != sem_post( &tpmMutex ) )
             {
+#ifdef DEBUG_MUTEX                
                 (*printfFunction)(NO_PREFIX, "In PlatformCommand, failed to release mutex error: %d\n", errno );
+#endif            
                 rval = TSS2_TCTI_RC_TRY_AGAIN;
             }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
+#ifdef DEBUG_MUTEX                
             (*printfFunction)(NO_PREFIX, "In PlatformCommand, released mutex\n" );
+#endif
         }
-#endif        
+#endif 
         CloseOutFile( &outFp );
     }
     return rval;
-}
+} 

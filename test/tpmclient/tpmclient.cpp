@@ -1480,7 +1480,12 @@ void TestStartAuthSession()
     TPMT_SYM_DEF symmetric;
     SESSION *authSession;
     TPM2B_NONCE nonceCaller;
-    UINT16 i, debugGapMax = DEBUG_GAP_MAX, debugMaxActiveSessions = DEBUG_MAX_ACTIVE_SESSIONS;
+    UINT16 i;
+#ifdef DEBUG_GAP_HANDLING
+    UINT16 debugGapMax = DEBUG_GAP_MAX, debugMaxActiveSessions = DEBUG_MAX_ACTIVE_SESSIONS;
+    TPMS_CONTEXT    evictedSessionContext;
+    TPM_HANDLE   evictedHandle;
+#endif    
     TPMA_LOCALITY locality;
     TPM_HANDLE badSessionHandle = 0x03010000;
 
@@ -6049,8 +6054,6 @@ void SysInitializeTests()
 
 void SysFinalizeTests()
 {
-    TSS2_RC rval = TSS2_RC_SUCCESS;
-
     TpmClientPrintf( 0, "\nSYS FINALIZE TESTS:\n" );
 
     Tss2_Sys_Finalize( 0 );
