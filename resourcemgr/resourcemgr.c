@@ -44,6 +44,8 @@ typedef HANDLE TPM_MUTEX;
 
 #elif __linux || __unix
 
+#include <time.h>
+
 #include "localtpm.h"
 #include <stdarg.h>
 #define sprintf_s   snprintf
@@ -2747,7 +2749,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
     int mutexWaitRetVal;
-//    struct timespec semWait = { 300, 0 };
+    struct timespec semWait = { 0, 0 };
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif                                    
@@ -2882,7 +2884,9 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 continue;
             }
 #elif __linux || __unix
-            mutexWaitRetVal = sem_wait( &tpmMutex );
+            clock_gettime( CLOCK_REALTIME, &semWait );
+            semWait.tv_sec += 60;
+            mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
 #ifdef DEBUG_MUTEX                
@@ -2993,7 +2997,9 @@ tpmCmdDone:
             ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #2: %d\n", mutexWaitRetVal );
         }
 #elif __linux || __unix
-        mutexWaitRetVal = sem_wait( &tpmMutex );
+        clock_gettime( CLOCK_REALTIME, &semWait );
+        semWait.tv_sec += 60;
+        mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
         if( mutexWaitRetVal != 0 )
         {
             ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #2: %d\n", errno );

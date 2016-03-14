@@ -53,6 +53,7 @@
 typedef HANDLE TPM_MUTEX;
 #elif __linux || __unix
 #include <semaphore.h>
+#include <time.h>
 typedef sem_t TPM_MUTEX;
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
@@ -77,7 +78,7 @@ TSS2_RC PlatformCommand(
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
     int mutexWaitRetVal;
-    struct timespec semWait = { 2, 0 };
+    struct timespec semWait = { 0, 0 };
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif             
@@ -105,6 +106,8 @@ TSS2_RC PlatformCommand(
                 rval = TSS2_TCTI_RC_TRY_AGAIN;
             }
 #elif __linux || __unix
+            clock_gettime( CLOCK_REALTIME, &semWait );
+            semWait.tv_sec += 60;
             mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
