@@ -2747,7 +2747,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     DWORD mutexWaitRetVal;
 #elif __linux || __unix
     int mutexWaitRetVal;
-    struct timespec semWait = { 2, 0 };
+//    struct timespec semWait = { 300, 0 };
 #else
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif                                    
@@ -2874,7 +2874,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             if( mutexWaitRetVal != WAIT_OBJECT_0 )
             {
 #ifdef DEBUG_MUTEX                
-                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #1: %d\n", mutexWaitRetVal );
 #endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
@@ -2882,11 +2882,11 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
                 continue;
             }
 #elif __linux || __unix
-            mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
+            mutexWaitRetVal = sem_wait( &tpmMutex );
             if( mutexWaitRetVal != 0 )
             {
 #ifdef DEBUG_MUTEX                
-                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
+                ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #1: %d\n", errno );
 #endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
@@ -2896,7 +2896,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex\n" );
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex #1\n" );
             
             // Send TPM command to TPM.
             ((TSS2_TCTI_CONTEXT_INTEL *)downstreamTctiContext)->currentConnectSock = serverStruct->connectSock;
@@ -2960,13 +2960,13 @@ tpmCmdServerReleaseMutex:
 #ifdef  _WIN32
         if( 0 == ReleaseMutex( tpmMutex ) )
         {
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", GetLastError() );
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error #1: %d\n", GetLastError() );
             goto tpmCmdDone;
         }
 #elif __linux || __unix
         if( 0 != sem_post( &tpmMutex ) )
         {
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error #1: %d\n", errno );
             goto tpmCmdDone;
         }
 #else    
@@ -2990,18 +2990,18 @@ tpmCmdDone:
 
         if( mutexWaitRetVal != WAIT_OBJECT_0 )
         {
-            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", mutexWaitRetVal );
+            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #2: %d\n", mutexWaitRetVal );
         }
 #elif __linux || __unix
-        mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
+        mutexWaitRetVal = sem_wait( &tpmMutex );
         if( mutexWaitRetVal != 0 )
         {
-            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error: %d\n", errno );
+            ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #2: %d\n", errno );
         }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
-        (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex\n" );
+        (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex #2\n" );
     }
     
     (void)FlushSessionsAndClearTable( serverStruct->connectSock );
@@ -3011,12 +3011,12 @@ tpmCmdDone:
 #ifdef  _WIN32
         if( 0 == ReleaseMutex( tpmMutex ) )
         {
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", GetLastError() );
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error #2: %d\n", GetLastError() );
         }
 #elif __linux || __unix
         if( 0 != sem_post( &tpmMutex ) )
         {
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error: %d\n", errno );
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, failed to release mutex error #2: %d\n", errno );
         }
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        

@@ -6880,9 +6880,11 @@ void TestRM()
 
     outPublic.t.size = 0;
     creationData.t.size = 0;
+    name.t.size = sizeof( name );
+    creationHash.t.size = sizeof( creationHash );
     rval = Tss2_Sys_CreatePrimary_Complete( sysContext, &newHandle, &outPublic, &creationData,
             &creationHash, &creationTicket, &name );
-    CheckPassed( rval );
+    CheckPassed( rval );  // #33
 
     //
     // Now try saving context for object and loading it using a different connection.
@@ -7376,7 +7378,7 @@ UINT32 noAuditLoadedMin = RM_LOADED_MIN;
 UINT32 noAuditActiveSessionMax = RM_ACTIVE_SESSIONS_MAX;
 UINT32 noAuditContextGapMax = RM_CONTEXT_GAP_MAX;
 UINT32 noAuditMemory = 2;
-UINT32 noAuditMaxSessionContext = 0x856;
+UINT32 noAuditMaxSessionContext = sizeof( TPMS_CONTEXT );
 
 // These are values that are dynamic and connection-specific.
 UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX - 1;
