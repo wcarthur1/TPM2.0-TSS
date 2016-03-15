@@ -3174,7 +3174,7 @@ void TestPolicy()
     }
 }
 
-#define MAX_TEST_SEQUENCES 10
+#define MAX_TEST_SEQUENCES 8
 void TestHash()
 {
     UINT32 rval;
@@ -3286,7 +3286,7 @@ void TestHash()
     auth.t.buffer[0] = 0;
     auth.t.buffer[1] = 0xff;
     rval = Tss2_Sys_HashSequenceStart ( sysContext, 0, &auth, TPM_ALG_SHA1, &sequenceHandle[0], 0 );
-    CheckPassed( rval );
+    CheckPassed( rval );  // #1
     
     // Init authHandle
     sessionData.sessionHandle = TPM_RS_PW;
@@ -3307,7 +3307,7 @@ void TestHash()
     memcpy( &dataToHash.t.buffer[0], &memoryToHash[0], dataToHash.t.size );
 
     rval = Tss2_Sys_SequenceUpdate ( sysContext, sequenceHandle[0], &sessionsData, &dataToHash, &sessionsDataOut );
-    CheckPassed( rval );
+    CheckPassed( rval );  // #2
 
     // Now try starting a bunch of sequences to see what happens.
     // This checks that the resource manager properly saves and restores the context
@@ -3315,7 +3315,7 @@ void TestHash()
     for( i = 1; i < 5; i++ )
     {
         rval = Tss2_Sys_HashSequenceStart ( sysContext, 0, &auth, TPM_ALG_SHA1, &sequenceHandle[i], 0 );
-        CheckPassed( rval );
+        CheckPassed( rval ); // #'s 3, 4, 5, 6
     }
 
     // Now end the created sequences.
@@ -3325,18 +3325,18 @@ void TestHash()
         result.t.size = sizeof( result ) - 2;
         rval = Tss2_Sys_SequenceComplete ( sysContext, sequenceHandle[i], &sessionsData, &dataToHash,
                 TPM_RH_PLATFORM, &result, &validation, &sessionsDataOut );
-        CheckPassed( rval );
+        CheckPassed( rval ); // #'s 7,8,9,10
     }
     
     //  Now try to finish the interrupted sequence.
     rval = Tss2_Sys_SequenceUpdate ( sysContext, sequenceHandle[0], &sessionsData, &dataToHash, &sessionsDataOut );
-    CheckPassed( rval );
+    CheckPassed( rval ); // #11
     
     dataToHash.t.size = sizeof( memoryToHash ) - MAX_DIGEST_BUFFER;
     memcpy( &dataToHash.t.buffer[0], &memoryToHash[MAX_DIGEST_BUFFER], dataToHash.t.size );
     rval = Tss2_Sys_SequenceComplete ( sysContext, sequenceHandle[0], &sessionsData, &dataToHash,
             TPM_RH_PLATFORM, &result, &validation, &sessionsDataOut );
-    CheckPassed( rval );
+    CheckPassed( rval ); // #12
 
     // Test the resulting hash.
     if( memcmp( (void *)&( result.t.buffer[0] ), (void *)&( goodHashValue[0] ), result.t.size ) )
@@ -3350,7 +3350,7 @@ void TestHash()
     for( i = 0; i < MAX_TEST_SEQUENCES; i++ )
     {
         rval = Tss2_Sys_HashSequenceStart ( sysContext, 0, &auth, TPM_ALG_SHA1, &sequenceHandle[i], 0 );
-        CheckPassed( rval );
+        CheckPassed( rval ); // #s 13 - 22
     }
 
     // Now end them all
@@ -3360,7 +3360,7 @@ void TestHash()
     {
         rval = Tss2_Sys_SequenceComplete ( sysContext, sequenceHandle[i], &sessionsData, &dataToHash,
                 TPM_RH_PLATFORM, &result, &validation, &sessionsDataOut );
-        CheckPassed( rval );
+        CheckPassed( rval ); // #s 23 - 32
     }
 }
 

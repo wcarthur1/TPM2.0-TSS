@@ -888,7 +888,7 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                 SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
                 break;
             }
-        }
+        }        
         else
         {
             entryPtr = entryPtr->nextEntry;
@@ -2875,9 +2875,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 
             if( mutexWaitRetVal != WAIT_OBJECT_0 )
             {
-#ifdef DEBUG_MUTEX                
                 ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #1: %d\n", mutexWaitRetVal );
-#endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );
@@ -2889,9 +2887,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
             mutexWaitRetVal = sem_timedwait( &tpmMutex, &semWait );
             if( mutexWaitRetVal != 0 )
             {
-#ifdef DEBUG_MUTEX                
                 ResMgrPrintf( NO_PREFIX, "In TpmCmdServer, failed to acquire mutex error #1: %d\n", errno );
-#endif                
                 CreateErrorResponse( TSS2_TCTI_RC_TRY_AGAIN );
                 SendErrorResponse( serverStruct->connectSock ); 
                 CloseOutFile( &outFp );
@@ -2900,8 +2896,10 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
-            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex #1\n" );
             
+#ifdef DEBUG_MUTEX                
+            (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex #1\n" );
+#endif            
             // Send TPM command to TPM.
             ((TSS2_TCTI_CONTEXT_INTEL *)downstreamTctiContext)->currentConnectSock = serverStruct->connectSock;
             rval = ResourceMgrSendTpmCommand( downstreamTctiContext, numBytes, cmdBuffer );
@@ -2976,8 +2974,11 @@ tpmCmdServerReleaseMutex:
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
+
+#ifdef DEBUG_MUTEX                
         (*printfFunction)(NO_PREFIX, "In TpmCmdServer, released mutex\n" );
-                
+#endif
+        
         CloseOutFile( &outFp );
     }
 
@@ -3007,7 +3008,10 @@ tpmCmdDone:
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
+
+#ifdef DEBUG_MUTEX                
         (*printfFunction)(NO_PREFIX, "In TpmCmdServer, acquired mutex #2\n" );
+#endif        
     }
     
     (void)FlushSessionsAndClearTable( serverStruct->connectSock );
@@ -3027,10 +3031,13 @@ tpmCmdDone:
 #else    
 #error Unsupported OS--need to add OS-specific support for threading here.        
 #endif
+
+#ifdef DEBUG_MUTEX                
         else
         {
             (*printfFunction)(NO_PREFIX, "In TpmCmdServer, released mutex\n" );
         }
+#endif        
     }
     
     closesocket( serverStruct->connectSock );
