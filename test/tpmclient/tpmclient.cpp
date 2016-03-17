@@ -888,11 +888,11 @@ void TestTctiApis( TSS2_TCTI_CONTEXT *tstTctiContext, int againstRM )
     // Test Receive for too small a response buffer
     //
     rval = ( (TSS2_TCTI_CONTEXT_COMMON_CURRENT *)tstTctiContext )->transmit( tstTctiContext, sizeof( getTestResultCommandBuffer ), &getTestResultCommandBuffer[0] );
-    CheckPassed( rval ); // #23
+    CheckPassed( rval ); // #22
 
     responseSize = sizeof( TPM20_Header_Out ) - 1;
     rval = ( (TSS2_TCTI_CONTEXT_COMMON_CURRENT *)tstTctiContext )->receive( tstTctiContext, &responseSize, &responseBuffer[0], TSS2_TCTI_TIMEOUT_BLOCK );
-    CheckFailed( rval, TSS2_TCTI_RC_INSUFFICIENT_BUFFER ); // #24
+    CheckFailed( rval, TSS2_TCTI_RC_INSUFFICIENT_BUFFER ); // #23
 
     // Test returned responseSize here.
     if( responseSize != expectedResponseSize )
