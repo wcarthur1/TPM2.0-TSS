@@ -133,6 +133,7 @@ TPM_HANDLE handle1024, handle2048sha1, handle2048rsa;
 UINT32 passCount = 1;
 UINT32 demoDelay = 0;
 int debugLevel = 0;
+int startAuthSessionTestOnly = 0;
 UINT8 indent = 0;
 
 TSS2_SYS_CONTEXT *sysContext;
@@ -8036,6 +8037,12 @@ void TpmTest()
 
     TestSapiApis();
 
+    if( startAuthSessionTestOnly == 1 )
+    {
+        TestStartAuthSession();
+        goto endTests;
+    }
+
     TestHierarchyControl();
 
     NvIndexProto();
@@ -8215,6 +8222,10 @@ int main(int argc, char* argv[])
                     PrintHelp();
                     return 1;
                 }
+            }            
+            else if( 0 == strcmp( argv[count], "-startAuthSessionTest" ) )
+            {
+                startAuthSessionTestOnly = 1;
             }            
 #if __linux || __unix
             else if( 0 == strcmp( argv[count], "-localTctiTest" ) )
