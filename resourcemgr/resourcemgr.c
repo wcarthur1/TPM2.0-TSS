@@ -260,6 +260,9 @@ typedef struct RESOURCE_MANAGER_ENTRY_STRUCT {
                                     // context is invalidated by TPM Restart.
         UINT16 persistent : 1;      // Only used for objects; indicates whether object
                                     // is persistent or not.
+        UINT16 aploaded : 1;        // Indicates whether this entry's context is loaded
+                                    // into the TPM or not from the calling connection's
+                                    // viewpoint.  
     } status;
     TPM_HANDLE virtualHandle;       // For transient objects and sequences, this is the virtual
                                     //  handle.
@@ -322,6 +325,7 @@ static TPM20_ErrorResponse errorResponse;
 static UINT64 lastSessionSequenceNum = 0;
 static UINT32 gapMsbBitMask = 0;
 static TPMS_CONTEXT cmdObjectContext;
+static UINT32 savedProperty;
 
 // These are used by logic that handles resource manager structures
 // on a Startup command.
@@ -702,6 +706,7 @@ TSS2_RC AddEntry( TPM_HANDLE virtualHandle, TPM_HANDLE realHandle, TPM_HANDLE pa
     newEntry->status.loaded = 1;
     newEntry->status.stClear = 0;
     newEntry->status.persistent = 0;
+    newEntry->status.aploaded = 0;
     newEntry->nextEntry = 0;
     
     return TSS2_RC_SUCCESS;
@@ -734,6 +739,47 @@ TSS2_RC RemoveEntry(RESOURCE_MANAGER_ENTRY_PTR entry)
 }
 
 enum findType{ RMFIND_VIRTUAL_HANDLE, RMFIND_REAL_HANDLE, RMFIND_PARENT_HANDLE, RMFIND_HIERARCHY, RMFIND_SESSION_SEQUENCE_NUMBER };
+
+//
+//  Find RM entries based on internal RM type (virtual, real, etc.) and TPM_HT
+//  type of handle.
+//
+//  firstEntry is the starting point of the search
+//  type is the type of handle to search for (real, virtual, etc.)
+//  handleType is the TPM_HT type of the handle to search for.
+//
+TSS2_RC FindEntryHandleType(RESOURCE_MANAGER_ENTRY_PTR firstEntry,
+    enum findType type, TPM_HANDLE handleType, RESOURCE_MANAGER_ENTRY_PTR *foundEntryPtr)
+{
+    UINT8 foundEntry = 0;
+
+    for( *foundEntryPtr = firstEntry; *foundEntryPtr != 0; *foundEntryPtr = (*foundEntryPtr)->nextEntry )
+    {
+        if( type == RMFIND_VIRTUAL_HANDLE )
+        {
+            if( handleType == ( ( (*foundEntryPtr)->virtualHandle ) & 0xff000000 ) )
+            {
+                foundEntry = 1;
+                break;
+            }
+        }
+        else if( type == RMFIND_REAL_HANDLE )
+        {
+            if( handleType == ( ( (*foundEntryPtr)->virtualHandle ) & 0xff000000 ) )
+            {
+                foundEntry = 1;
+                break;
+            }
+        }
+        else
+            return TSS2_RESMGR_BAD_FINDFIELD;
+    }
+
+    if( foundEntry == 0 )
+        return TSS2_RESMGR_FIND_FAILED;
+    else
+        return TSS2_RC_SUCCESS;
+}
 
 //
 //  firstEntry is the starting point of the search
@@ -848,11 +894,11 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                 SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
                 break;
             }
-        }
+        }        
         else
         {
             entryPtr = entryPtr->nextEntry;
-        }
+        }        
     }
 
     return rval;
@@ -1284,6 +1330,69 @@ TSS2_RC ContextGapUpdateOldestSession()
     return rval;
 }
 
+void FindLoadedSessionsPerConnection( UINT64 connectionId, UINT32 *newValue, int checkAppLoaded )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
+    int j = 0;
+
+    j = 0;
+    nextEntry = entryList;
+
+    // Find all sessions for this connection that have the aploaded bit set.
+    // First find all HMAC sessions.
+    while( nextEntry )
+    {
+        rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_HMAC_SESSION << HR_SHIFT, &foundEntryPtr);
+        if( rval == TSS2_RC_SUCCESS )
+        {
+            if( foundEntryPtr->connectionId == connectionId )
+            {
+                if( checkAppLoaded )
+                {
+                    if( foundEntryPtr->status.aploaded == 1)
+                    {
+                        j++;
+                    }
+                }
+                else
+                {
+                    j++;
+                }
+            }
+        }
+        else
+            break;
+
+        nextEntry = foundEntryPtr->nextEntry;
+    }
+
+    if( rval == TSS2_RESMGR_FIND_FAILED || rval == TSS2_RC_SUCCESS )
+    {
+        // Now find all policy sessions.
+        nextEntry = entryList;
+        while( nextEntry )
+        {
+            rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_POLICY_SESSION << HR_SHIFT, &foundEntryPtr);
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                if( foundEntryPtr->connectionId == connectionId )
+                {
+                    if( foundEntryPtr->status.aploaded == 1 )
+                    {
+                        j++;
+                    }
+                }
+            }
+            else
+                break;
+
+            nextEntry = foundEntryPtr->nextEntry;
+        }
+        *newValue = j;
+    }
+}
+
 TSS2_RC ResourceMgrSendTpmCommand(
     TSS2_TCTI_CONTEXT *tctiContext,
     size_t          command_size,       /* in */
@@ -1298,8 +1407,9 @@ TSS2_RC ResourceMgrSendTpmCommand(
     RESOURCE_MANAGER_ENTRY_PTR foundEntryPtr;
     UINT8 *currentPtr = command_buffer;
     TPM_ST tag;
-	UINT32 authAreaSize;
-	TPM2B_PUBLIC inPublic = { { CHANGE_ENDIAN_DWORD( sizeof( TPM2B_PUBLIC ) - 2), } };
+    UINT32 authAreaSize;
+    TPM2B_PUBLIC inPublic = { { CHANGE_ENDIAN_DWORD( sizeof( TPM2B_PUBLIC ) - 2), } };
+    UINT32 capability;
             
     RESMGR_UNMARSHAL_UINT16( command_buffer, command_size, &currentPtr, &tag, &responseRval, SendCommand );
     RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, 0, &responseRval, SendCommand );
@@ -1385,6 +1495,20 @@ TSS2_RC ResourceMgrSendTpmCommand(
             if( responseRval != TSS2_RC_SUCCESS )
                 goto SendCommand;
             
+            break;
+        case TPM_CC_GetCapability:
+            // Need to save handle type that we're requesting, if any.  This is
+            // is needed so that when we receive the response, even if the TPM has
+            // no handles in its returned list, the capabilities virtualization code
+            // can still find the list of virtualized handles.
+
+            // First get the capability.
+            RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, &capability, &responseRval, SendCommand );
+            if( capability == TPM_CAP_HANDLES )
+            {
+                // Save the handle type, savedProperty.
+                RESMGR_UNMARSHAL_UINT32( command_buffer, command_size, &currentPtr, &savedProperty, &responseRval, SendCommand );
+            }
             break;
         case TPM_CC_Create:
             cmdParentHandle = cmdHandles[0].handle;
@@ -1668,6 +1792,262 @@ UINT8 PersistentHandle( TPM_HANDLE handle )
         return 0;
 }
 
+TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_HANDLE handleType, UINT64 connectionId )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY_PTR foundEntryPtr, nextEntry;
+    int i = 0;
+
+    if( ( handleType == ( TPM_HT_TRANSIENT << HR_SHIFT ) ) || ( handleType == ( TPM_HT_LOADED_SESSION << HR_SHIFT ) ) )
+    {
+        nextEntry = entryList;
+
+        // Need to virtualize transient objects
+        while( nextEntry )
+        {
+            rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, handleType, &foundEntryPtr );
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                if( foundEntryPtr->connectionId == connectionId )
+                {
+                    receivedCapabilityData->data.handles.handle[i++] = foundEntryPtr->virtualHandle;
+                }
+            }
+            else
+            {
+                break;
+            }
+
+            nextEntry = foundEntryPtr->nextEntry;
+        }
+
+        // do it again for TPM_HT_SAVED_SESSION if handleType == TPM_HT_LOADED_SESSION
+        // since virtualized version of TPM_HT_LOADED_SESSIONS = (SAVED + LOADED sessions) which
+        // is the same as active HMAC + POLICY sessions.
+        nextEntry = entryList;
+        if( handleType == ( TPM_HT_LOADED_SESSION << HR_SHIFT ) )
+        {
+            while( nextEntry )
+            {
+                rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_SAVED_SESSION << HR_SHIFT, &foundEntryPtr );
+                if( rval == TSS2_RC_SUCCESS )
+                {
+                    if( foundEntryPtr->connectionId == connectionId )
+                    {
+                        receivedCapabilityData->data.handles.handle[i++] = foundEntryPtr->virtualHandle;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+
+                nextEntry = foundEntryPtr->nextEntry;
+            }
+        }
+        receivedCapabilityData->data.handles.count = i;
+    }
+
+    if( rval == TSS2_RESMGR_FIND_FAILED )
+        rval = TSS2_RC_SUCCESS;
+    
+    return rval;
+}
+
+TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UINT64 connectionId )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    RESOURCE_MANAGER_ENTRY *foundEntryPtr, *nextEntry;
+    UINT16 i, j = 0;
+    UINT32 newValue;
+	TPMS_CAPABILITY_DATA capabilityData;
+
+    
+    if( receivedCapabilityData->capability == TPM_CAP_HANDLES )
+    {
+        rval = VirtualizeCapHandles( receivedCapabilityData, savedProperty, connectionId );
+    }
+    else if( receivedCapabilityData->capability == TPM_CAP_TPM_PROPERTIES )
+    {
+        for( i = 0; i < receivedCapabilityData->data.tpmProperties.count; i++ )
+        {
+            newValue = 0;
+            switch( receivedCapabilityData->data.tpmProperties.tpmProperty[i].property )
+            {
+                case TPM_PT_HR_TRANSIENT_MIN:
+                    newValue = RM_TRANSIENT_MIN;
+                    break;
+                case TPM_PT_HR_LOADED_MIN:
+                    newValue = RM_LOADED_MIN;
+                    break;
+                case TPM_PT_ACTIVE_SESSIONS_MAX:
+                    newValue = RM_ACTIVE_SESSIONS_MAX;
+                    break;
+                case TPM_PT_CONTEXT_GAP_MAX:
+                    newValue = RM_CONTEXT_GAP_MAX;
+                    break;
+                case TPM_PT_MEMORY:
+                    rval = Tss2_Sys_GetCapability( resMgrSysContext, 0,
+                            TPM_CAP_TPM_PROPERTIES, TPM_PT_MEMORY,
+                            1, 0, &capabilityData, 0 );
+                    if( rval == TPM_RC_SUCCESS &&
+                            capabilityData.capability == TPM_CAP_TPM_PROPERTIES &&
+                            capabilityData.data.tpmProperties.tpmProperty[0].property == TPM_PT_MEMORY &&
+                            capabilityData.data.tpmProperties.count == 1 )
+                    {
+						newValue = capabilityData.data.tpmProperties.tpmProperty[0].value;
+                        newValue &= ~TPMA_MEMORY_OBJECTCOPIEDTORAM;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                    break;
+                case TPM_PT_MAX_SESSION_CONTEXT:
+                    newValue = sizeof( TPMS_CONTEXT );
+                    break;
+                case TPM_PT_HR_LOADED:
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
+                    break;
+                case TPM_PT_HR_LOADED_AVAIL:
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 1 );
+                    // NOTE:  don't need to check for RM_LOADED_MIN >= newValue
+                    // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
+                    // session are created.
+                    newValue = RM_LOADED_MIN - newValue;
+                    break;
+                case TPM_PT_HR_ACTIVE:
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
+                    break;
+                case TPM_PT_HR_ACTIVE_AVAIL:
+                    FindLoadedSessionsPerConnection( connectionId, &newValue, 0 );
+                    // NOTE:  don't need to check for RM_ACTIVE_SESSIONS_MAX >= newValue,
+                    // since RM is supposed to enforce that no more than RM_ACTIVE_SESSIONS_MAX
+                    // session are created.
+                    newValue = RM_ACTIVE_SESSIONS_MAX - newValue;
+                    break;
+                case TPM_PT_HR_TRANSIENT_AVAIL:
+                    j = 0;
+                    nextEntry = entryList;
+                    while( nextEntry )
+                    {
+                        rval = FindEntryHandleType( nextEntry, RMFIND_VIRTUAL_HANDLE, TPM_HT_TRANSIENT << HR_SHIFT, &foundEntryPtr);
+                        if( rval == TSS2_RC_SUCCESS )
+                        {
+                            if( foundEntryPtr->connectionId == connectionId )
+                            {
+                                j++;
+                            }
+                        }
+                        else
+                            break;
+
+                        nextEntry = foundEntryPtr->nextEntry;
+                    }
+                    if( rval == TSS2_RC_SUCCESS )
+                    {
+                        if( RM_TRANSIENT_MAX >= j )
+                            newValue = RM_TRANSIENT_MIN - j;
+                        else
+                            newValue = 0;
+                    }
+                    break;
+                default:
+                    newValue = receivedCapabilityData->data.tpmProperties.tpmProperty[i].value;
+                    break;
+            }
+
+            if( rval == TSS2_RESMGR_FIND_FAILED )
+                rval = TSS2_RC_SUCCESS;
+
+            if( rval == TSS2_RC_SUCCESS )
+                receivedCapabilityData->data.tpmProperties.tpmProperty[i].value = newValue;
+            else
+                break;
+        }
+    }
+    
+    return rval;
+}
+
+TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size, UINT32 maxResponseSize, UINT8 **currentPtr, TPM_RC *responseRval )
+{
+	UINT32 i, newResponseSize;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    
+    // This is the capability data received from the TPM.
+    TPMS_CAPABILITY_DATA	receivedCapabilityData;
+
+    // This is the capability data returned by the RM.  Could be different in size
+    // and/or content from what was received from the TPM if some of the capabilities were virtualized.
+
+    // NOTE:  following code does lots of strange things with internals of sys context structures.
+    // The reason for this is that the marshal/unmarshal functions were designed to optimize code
+    // size, ease of auto code-generation, etc, so they use the sys context for lots of bookkeeping.
+    // To avoid rewriting the marshal/unmarshal functions for capability data, we do lots of
+    // weird things here.  This structure is too complex to create macros like we did for TPMS_CONTEXT.
+      
+    // Copy info into tempSysContext.
+    if( ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->maxResponseSize >= *response_size )
+    {
+        for( i = 0; i < *response_size; i++ )
+        {
+            ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr[i] = response_buffer[i];
+        }
+        ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = (((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr ) + sizeof( TPM20_Header_Out );
+    }
+    else
+    {
+        rval = TSS2_BASE_RC_INSUFFICIENT_BUFFER;
+		goto exitVirtualizeCapabilities;
+    }
+    
+    Unmarshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
+    rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
+    if( rval != TSS2_RC_SUCCESS )
+		goto exitVirtualizeCapabilities;
+   
+    // Go through returned capabilities and virtualize anything that needs to be virtualized.
+    rval = VirtualizeCapStructure( &receivedCapabilityData, cmdConnectionId );
+    if( rval != TSS2_RC_SUCCESS )
+        goto exitVirtualizeCapabilities;
+    
+    // Reset nextData pointer.
+    ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = ((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr + sizeof( TPM20_Header_Out );
+    
+    Marshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
+    rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
+    if( rval != TSS2_RC_SUCCESS )
+        goto exitVirtualizeCapabilities;
+
+    // Set size of returned response.
+    newResponseSize = ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData - ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr;
+    if( newResponseSize <= maxResponseSize )
+    {
+        *response_size = newResponseSize;
+
+        // Update response's size.
+        ( ( TPM20_Header_Out * )( ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr ) )->responseSize = CHANGE_ENDIAN_DWORD( newResponseSize );
+        
+        // Stick new capability data into returned response.
+        for( i = 0; i < newResponseSize; i++ )
+        {
+            response_buffer[i] = ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr[i];
+        }
+    }
+    else
+    {
+        rval = TSS2_BASE_RC_INSUFFICIENT_BUFFER;
+		goto exitVirtualizeCapabilities;
+    }
+    
+exitVirtualizeCapabilities:
+    if( rval != TSS2_RC_SUCCESS )
+        SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
+
+    return rval;
+}
+
 TSS2_RC ResourceMgrReceiveTpmResponse(
     TSS2_TCTI_CONTEXT   *tctiContext,
     UINT32              *response_size,     /* out */
@@ -1694,6 +2074,7 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
     UINT8 *currentPtr, *savedCurrentPtr;
     UINT32 responseHandles[3] = { 0, 0, 0 };
     TPMA_SESSION sessionAttributes;
+    UINT32 maxResponseSize = *response_size;
 
     currentPtr = response_buffer;
     
@@ -1873,6 +2254,8 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                             foundEntryPtr->context = cmdObjectContext;
                         }
                         
+                        foundEntryPtr->status.aploaded = 1;
+
                         if( currentCommandCode == TPM_CC_CreatePrimary ||
                                 currentCommandCode == TPM_CC_Load ||
                                 currentCommandCode == TPM_CC_LoadExternal )
@@ -1902,8 +2285,17 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                         //
                         foundEntryPtr->virtualHandle = newVirtualHandle;
                         foundEntryPtr->status.loaded = 1;
+                        foundEntryPtr->status.aploaded = 1;
                         *( (TPM_HANDLE *) responseHandlePtr ) = CHANGE_ENDIAN_DWORD( newVirtualHandle );
                     }
+                }
+                else if( currentCommandCode == TPM_CC_GetCapability && !( tag == TPM_ST_SESSIONS && sessionHandles[0].sessionAttributes.audit ) )
+                {
+                    // Virtualize the returned capabilities, if an audit session isn't being used for the command.
+                    responseRval = VirtualizeCapabilities( response_buffer, response_size, maxResponseSize, &currentPtr, &responseRval );
+
+                    if( responseRval != TSS2_RC_SUCCESS )
+                        goto returnFromResourceMgrReceiveTpmResponse;
                 }
                 else if( currentCommandCode == TPM_CC_ContextSave && IsSessionHandle( cmdSavedHandle ) )
                 {
@@ -1914,6 +2306,7 @@ TSS2_RC ResourceMgrReceiveTpmResponse(
                     }
 
                     foundEntryPtr->status.loaded = 0;
+                    foundEntryPtr->status.aploaded = 0;
 
                     RESMGR_UNMARSHAL_TPMS_CONTEXT( response_buffer, *response_size, &currentPtr, &( foundEntryPtr->context ), &responseRval, returnFromResourceMgrReceiveTpmResponse );
                 }
@@ -2247,7 +2640,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     UINT8 criticalSectionEntered;
 
     strcpy( &functionString[0], MUTEX_DBG_FUNCTION_STR );
-
+    
     for(;;)
     {
         criticalSectionEntered = 0;
@@ -2442,6 +2835,16 @@ tpmCmdServerDone:
     // an error occurred after the TPM send and receive calls
     // above.
     //
+    if( !criticalSectionEntered )
+    {
+        // CRITICAL SECTION STARTS HERE.
+        rval = StartCriticalSection( &tpmMutex, &functionString[0] );
+
+        if( rval == TSS2_RC_SUCCESS )
+        {
+            criticalSectionEntered = 1;
+        }
+    }
 
     if( criticalSectionEntered )
     {
@@ -3107,10 +3510,10 @@ int main(int argc, char* argv[])
     {
         DebugPrintf( NO_PREFIX, "Resource Mgr failed to create mutex, error #%d.  Exiting...\n", rval );
         return( 1 );
-    }
+    }        
 #else
-    #error Unsupported OS--need to add OS-specific support for threading here.
-#endif
+    #error Unsupported OS--need to add OS-specific support for threading here.        
+#endif        
 
     rval = InitResourceMgr( DBG_COMMAND_RM_TABLES );
     if( rval != TSS2_RC_SUCCESS )
@@ -3172,6 +3575,8 @@ int main(int argc, char* argv[])
 
     TeardownSysContext( &resMgrSysContext );
     
+    TeardownSysContext( &tempSysContext );
+        
 initDone:
 
     return 0;
