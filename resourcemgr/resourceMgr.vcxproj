@@ -109,7 +109,6 @@
     <ClCompile Include="..\common\sockets.cpp" />
     <ClCompile Include="..\common\syscontext.c" />
     <ClCompile Include="..\tcti\commonchecks.c" />
-    <ClCompile Include="..\tcti\criticalsection.c" />
     <ClCompile Include="..\tcti\platformcommand.c" />
     <ClCompile Include="..\tcti\tcti_socket.cpp" />
     <ClCompile Include="criticalsection_windows.c" />

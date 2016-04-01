@@ -7121,6 +7121,97 @@ void TestCreate1()
     CheckPassed(rval);
 }
 
+//
+// Create a primary object and return the object's handle.
+// Used  for testing virtualization of capabilities.
+//
+TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHandle )
+{
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    TPM2B_SENSITIVE_CREATE  inSensitive = { { sizeof( TPM2B_SENSITIVE_CREATE ) - 2, } };
+    TPM2B_DATA              outsideInfo = { { sizeof( TPM2B_DATA ) - 2, } };
+    TPML_PCR_SELECTION      creationPCR;
+    TPMS_AUTH_COMMAND sessionData;
+    TPMS_AUTH_RESPONSE sessionDataOut;
+    TSS2_SYS_CMD_AUTHS sessionsData;
+
+    TPM2B_PUBLIC outPublic = { { sizeof( TPM2B_PUBLIC ) - 2, } };
+    TPM2B_CREATION_DATA creationData =  { { sizeof( TPM2B_CREATION_DATA ) - 2, } };
+	TPM2B_DIGEST creationHash = { { sizeof( TPM2B_DIGEST ) - 2, } };
+	TPMT_TK_CREATION creationTicket = { 0, 0, { { sizeof( TPM2B_DIGEST ) - 2, } } };
+
+    TSS2_SYS_RSP_AUTHS sessionsDataOut;
+	TPM2B_NAME name = { { sizeof( TPM2B_NAME ) - 2, } };
+
+    TPMS_AUTH_COMMAND *sessionDataArray[1];
+    TPMS_AUTH_RESPONSE *sessionDataOutArray[1];
+
+    sessionDataArray[0] = &sessionData;
+    sessionDataOutArray[0] = &sessionDataOut;
+
+    sessionsDataOut.rspAuths = &sessionDataOutArray[0];
+    sessionsData.cmdAuths = &sessionDataArray[0];
+
+    sessionsDataOut.rspAuthsCount = 1;
+
+    sessionData.sessionHandle = TPM_RS_PW;
+
+    // Init nonce.
+    sessionData.nonce.t.size = 0;
+
+    // init hmac
+    sessionData.hmac.t.size = 0;
+
+    // Init session attributes
+    *( (UINT8 *)((void *)&sessionData.sessionAttributes ) ) = 0;
+
+    sessionsData.cmdAuthsCount = 1;
+    sessionsData.cmdAuths[0] = &sessionData;
+
+    inSensitive.t.sensitive.userAuth = loadedSha1KeyAuth;
+    inSensitive.t.sensitive.userAuth = loadedSha1KeyAuth;
+    inSensitive.t.sensitive.data.t.size = 0;
+    inSensitive.t.size = loadedSha1KeyAuth.b.size + 2;
+
+    inPublic.t.publicArea.type = TPM_ALG_RSA;
+    inPublic.t.publicArea.nameAlg = TPM_ALG_SHA1;
+
+    // First clear attributes bit field.
+    *(UINT32 *)&( inPublic.t.publicArea.objectAttributes) = 0;
+    inPublic.t.publicArea.objectAttributes.restricted = 1;
+    inPublic.t.publicArea.objectAttributes.userWithAuth = 1;
+    inPublic.t.publicArea.objectAttributes.decrypt = 1;
+    inPublic.t.publicArea.objectAttributes.fixedTPM = 1;
+    inPublic.t.publicArea.objectAttributes.fixedParent = 1;
+    inPublic.t.publicArea.objectAttributes.sensitiveDataOrigin = 1;
+
+    inPublic.t.publicArea.authPolicy.t.size = 0;
+
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    inPublic.t.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_ECB;
+    inPublic.t.publicArea.parameters.rsaDetail.scheme.scheme = TPM_ALG_NULL;
+    inPublic.t.publicArea.parameters.rsaDetail.keyBits = 1024;
+    inPublic.t.publicArea.parameters.rsaDetail.exponent = 0;
+
+    inPublic.t.publicArea.unique.rsa.t.size = 0;
+
+    outsideInfo.t.size = 0;
+    creationPCR.count = 0;
+
+    inPublic.t.publicArea.parameters.rsaDetail.keyBits = 2048;
+
+    outPublic.t.size = 0;
+    creationData.t.size = 0;
+
+    rval = Tss2_Sys_CreatePrimary( sysContext, TPM_RH_PLATFORM, &sessionsData, &inSensitive, &inPublic,
+            &outsideInfo, &creationPCR, objectHandle, &outPublic, &creationData, &creationHash,
+            &creationTicket, &name, &sessionsDataOut );
+
+	return rval;
+}
+
 #if __linux || __unix
 //
 // NOTE:  these tests must be run when no RM is running in the system and when a local TPM is installe.
@@ -7166,6 +7257,688 @@ void TestLocalTCTI()
     
 }
 #endif
+
+//
+// Structures for debug output from capability virtualization tests.
+//
+typedef struct {
+    UINT32 property;
+    char *capString;
+} CAPABILITY_TEST_STRING;
+
+char HT_TRANSIENT_STR[] = "TPM_HT_TRANSIENT";
+char HT_LOADED_SESSION_STR[] = "TPM_HT_LOADED_SESSION";
+char HR_TRANSIENT_MIN_STR[] = "TPM_PT_HR_TRANSIENT_MIN";
+char HR_LOADED_MIN_STR[] = "TPM_PT_HR_LOADED_MIN";
+char ACTIVE_SESSIONS_MAX_STR[] = "TPM_PT_ACTIVE_SESSIONS_MAX";
+char CONTEXT_GAP_MAX_STR[] = "TPM_PT_CONTEXT_GAP_MAX";
+char MEMORY_STR[] = "TPM_PT_MEMORY";
+char MAX_SESSION_CONTEXT_STR[] = "TPM_PT_MAX_SESSION_CONTEXT";
+char HR_LOADED_STR[] = "TPM_PT_HR_LOADED";
+char HR_LOADED_AVAIL_STR[] = "TPM_PT_HR_LOADED_AVAIL";
+char HR_ACTIVE_STR[] = "TPM_PT_HR_ACTIVE";
+char HR_ACTIVE_AVAIL_STR[] = "TPM_PT_HR_ACTIVE_AVAIL";
+char HR_TRANSIENT_AVAIL_STR[] = "TPM_PT_HR_TRANSIENT_AVAIL";
+
+
+CAPABILITY_TEST_STRING capabilityTestStrings[] =
+{
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), &HT_TRANSIENT_STR[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), &HT_LOADED_SESSION_STR[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, &HR_TRANSIENT_MIN_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, &HR_LOADED_MIN_STR[0] },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, &ACTIVE_SESSIONS_MAX_STR[0] },
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, &CONTEXT_GAP_MAX_STR[0] },
+    { (UINT32)TPM_PT_MEMORY, &MEMORY_STR[0] },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, &MAX_SESSION_CONTEXT_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED, &HR_LOADED_STR[0] },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, &HR_LOADED_AVAIL_STR[0] },
+    { (UINT32)TPM_PT_HR_ACTIVE, &HR_ACTIVE_STR[0] },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, &HR_ACTIVE_AVAIL_STR[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, &HR_TRANSIENT_AVAIL_STR[0] },
+};
+
+char *FindPropertyString( UINT32 property )
+{
+    static char propertyString[100];
+    unsigned int i;
+
+    strcpy( &propertyString[0], "" );
+
+    for( i = 0; i < sizeof( capabilityTestStrings ) / sizeof( CAPABILITY_TEST_STRING ); i++ )
+    {
+        if( capabilityTestStrings[i].property == property )
+        {
+            strcpy( propertyString, capabilityTestStrings[i].capString );
+            break;
+        }
+    }
+    return &propertyString[0];
+}
+
+#define CONNECTION1_SESSIONS 20
+SESSION *auditSessionsConnection1[CONNECTION1_SESSIONS];
+
+#define CONNECTION2_SESSIONS 6
+SESSION *auditSessionsConnection2[CONNECTION2_SESSIONS];
+
+#define CONNECTION1_OBJECTS 20
+
+#define CONNECTION2_OBJECTS 6
+
+typedef struct {
+    TPM_CAP	capability;
+    UINT32 property;
+} CAPABILITY_TEST_SETUP;
+
+CAPABILITY_TEST_SETUP capabilityTestSetups[] =
+{
+    { (UINT32)TPM_CAP_HANDLES, (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT) },
+    { (UINT32)TPM_CAP_HANDLES, (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT) },
+    { (UINT32)TPM_CAP_TPM_PROPERTIES, (UINT32)TPM_PT_HR_TRANSIENT_MIN },
+};
+
+typedef struct {
+    UINT32 property;
+    UINT8  resultsArrayCount;
+    UINT32 *resultsArray;
+} CAPABILITY_TEST_EXPECTED_RESULT;
+
+// These are values in the RM that aren't dynamic.
+UINT32 noAuditTransientMin = RM_TRANSIENT_MIN;
+UINT32 noAuditLoadedMin = RM_LOADED_MIN;
+UINT32 noAuditActiveSessionMax = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditContextGapMax = RM_CONTEXT_GAP_MAX;
+UINT32 noAuditMemory = 2;
+UINT32 noAuditMaxSessionContext = sizeof( TPMS_CONTEXT );
+
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded1 = RM_ACTIVE_SESSIONS_MAX - 1;
+UINT32 noAuditLoadedAvail1 = 1;
+UINT32 noAuditActive1 = RM_ACTIVE_SESSIONS_MAX;
+UINT32 noAuditActiveAvail1 = 0;
+UINT32 noAuditTransientAvail1 = 2;
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientObjectConn1[10] = { };  // List of transient handles for connection #1.
+UINT32 noAuditLoadedSessionConn1[10] = { };     // List of loaded sessions for connection #1.
+
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection1[] =
+{
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientObjectConn1[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedSessionConn1[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax },
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded1 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail1 },
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive1 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail1 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail1 },
+    { (UINT32)0xffffffff, 1, },  // List terminator.
+};
+
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded2 = 6;
+UINT32 noAuditLoadedAvail2 = 4;
+UINT32 noAuditActive2 = 6;
+UINT32 noAuditActiveAvail2 = 4;
+UINT32 noAuditTransientAvail2 = CONNECTION2_OBJECTS - 2;
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientObjectConn2[10] = { };   // List of transient handles for connection #2.
+UINT32 noAuditLoadedSessionConn2[10] = { };     // List of loaded sessions for connection #2.
+
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection2[] =
+{
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientObjectConn2[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedSessionConn2[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax },
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded2 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail2 },
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive2 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail2 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail2 },
+    { (UINT32)0xffffffff, 1, },
+};
+
+// These are values that are dynamic and connection-specific.
+UINT32 noAuditLoaded3 = 0;
+UINT32 noAuditLoadedAvail3 = RM_LOADED_MIN;
+UINT32 noAuditActive3 = 0;
+UINT32 noAuditActiveAvail3 = RM_LOADED_MIN;
+UINT32 noAuditTransientAvail3 = RM_TRANSIENT_MIN;
+
+// These will be filled in dynamically during test and are connection-specific.
+UINT32 noAuditTransientObjectConn3[10] = { };   // List of transient handles for connection #3.
+UINT32 noAuditLoadedSessionConn3[10] = { };      // List of loaded sessions for connection #3.
+
+CAPABILITY_TEST_EXPECTED_RESULT capabilityTestResultsNoAuditConnection3[] =
+{
+    { (UINT32)(TPM_HT_TRANSIENT << HR_SHIFT), 0 , &noAuditTransientObjectConn3[0] },
+    { (UINT32)(TPM_HT_LOADED_SESSION << HR_SHIFT), 0, &noAuditLoadedSessionConn3[0] },
+    { (UINT32)TPM_PT_HR_TRANSIENT_MIN, 1, &noAuditTransientMin },
+    { (UINT32)TPM_PT_HR_LOADED_MIN, 1, &noAuditLoadedMin },
+    { (UINT32)TPM_PT_ACTIVE_SESSIONS_MAX, 1, &noAuditActiveSessionMax },
+    { (UINT32)TPM_PT_CONTEXT_GAP_MAX, 1, &noAuditContextGapMax },
+	{ (UINT32)TPM_PT_MEMORY, 1, &noAuditMemory },
+    { (UINT32)TPM_PT_MAX_SESSION_CONTEXT, 1, &noAuditMaxSessionContext },
+    { (UINT32)TPM_PT_HR_LOADED, 1, &noAuditLoaded3 },
+    { (UINT32)TPM_PT_HR_LOADED_AVAIL, 1, &noAuditLoadedAvail3 },
+    { (UINT32)TPM_PT_HR_ACTIVE, 1, &noAuditActive3 },
+    { (UINT32)TPM_PT_HR_ACTIVE_AVAIL, 1, &noAuditActiveAvail3 },
+    { (UINT32)TPM_PT_HR_TRANSIENT_AVAIL, 1, &noAuditTransientAvail3 },
+    { (UINT32)0xffffffff, 1, },
+};
+
+void VirtualizedCapTestFailure( UINT32 capability, UINT32 property, UINT32 *expectedResult, UINT32 *actualResult, UINT8 resultNum )
+{
+	UINT32 i;
+
+    if( capability == TPM_CAP_HANDLES )
+    {
+        DebugPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property: = 0x%8.8x/0x%8.8x\n\t" \
+                "expected results: ", capability, property );
+        for( i = 0; i < resultNum; i++ )
+            DebugPrintf( NO_PREFIX,  "%8.8x ", expectedResult[i] );
+
+        DebugPrintf( NO_PREFIX,  "\n\tactual results: " );
+        for( i = 0; i < resultNum; i++ )
+            DebugPrintf( NO_PREFIX,  "%8.8x ", actualResult[i] );
+    }
+    else
+    {
+        DebugPrintf( NO_PREFIX,  "Virtualized caps test failure, capability/property/expected/actual: = 0x%8.8x/0x%8.8x/0x%8.8x/0x%8.8x\n",
+            capability, property, *expectedResult, *actualResult );
+    }
+    Cleanup();
+}
+
+//
+// Using the property, search for the expected results entry in the resultsArray table.
+//
+TSS2_RC FindExpectedResult( CAPABILITY_TEST_EXPECTED_RESULT resultsArray[], UINT32 property, CAPABILITY_TEST_EXPECTED_RESULT **expectedResultStruct )
+{
+    int i;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    for( i = 0, *expectedResultStruct = 0; resultsArray[i].property != 0xffffffff; i++ )
+    {
+        if( resultsArray[i].property == property )
+        {
+            *expectedResultStruct = &resultsArray[i];
+        }
+    }
+
+    if( *expectedResultStruct == 0 )
+        rval = 1;
+
+    return rval;
+}
+
+void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPABILITY_TEST_EXPECTED_RESULT resultsArray[] )
+{
+    unsigned int i, j;
+    CAPABILITY_TEST_EXPECTED_RESULT *expectedResultStruct;
+    UINT32 expectedResult, actualResult, property;
+	TSS2_RC rval = TSS2_RC_SUCCESS;
+    UINT32 actualResults[20];
+	int matchFound = 0;
+    
+    if( capabilityData->capability == TPM_CAP_HANDLES )
+    {
+        rval = FindExpectedResult( resultsArray, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, &expectedResultStruct );
+        if( rval == TSS2_RC_SUCCESS )
+        {
+            if( capabilityData->data.handles.count != expectedResultStruct->resultsArrayCount )
+            {
+                DebugPrintf( NO_PREFIX,  "Virtualized caps test failure, capability 0x%8.8x/property 0x%8.8x, counts not the same, expected/actual: = 0x%8.8x/0x%8.8x\n",
+                        capabilityData->capability, capabilityData->data.handles.handle[0], expectedResultStruct->resultsArrayCount, capabilityData->data.handles.count );
+                Cleanup();
+            }
+            for( i = 0; i < capabilityData->data.handles.count; i++ )
+            {
+                actualResult = capabilityData->data.handles.handle[i];
+
+                matchFound = 0;
+                for( j = 0; j < capabilityData->data.handles.count; j++ )
+                {
+                    expectedResult = expectedResultStruct->resultsArray[j];
+
+                    if( actualResult == expectedResult )
+                    {
+                        matchFound = 1;
+                    }
+                }
+                if( !matchFound )
+                {
+                    for( j = 0; j < capabilityData->data.handles.count; j++ )
+                        actualResults[j] = capabilityData->data.handles.handle[j];
+
+                    VirtualizedCapTestFailure( capabilityData->capability, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK,
+                            &( expectedResultStruct->resultsArray[0] ), &actualResults[0], capabilityData->data.handles.count );
+                }
+            }
+        }
+    }
+    else if( capabilityData->capability == TPM_CAP_TPM_PROPERTIES )
+    {
+        for( i = 0; i < capabilityData->data.tpmProperties.count; i++ )
+        {
+            property = capabilityData->data.tpmProperties.tpmProperty[i].property;
+            actualResult = capabilityData->data.tpmProperties.tpmProperty[i].value;
+
+            rval = FindExpectedResult( resultsArray, property, &expectedResultStruct );
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                expectedResult = expectedResultStruct->resultsArray[0];
+                if( actualResult != expectedResult )
+                {
+                    VirtualizedCapTestFailure( capabilityData->capability, property, &expectedResult, &actualResult, i );
+                }
+            }
+        }
+    }
+    else
+    {
+        DebugPrintf( NO_PREFIX,  "ERROR:  bad capability %8.8x in VerifyGetCapabilityTestResults()\n", capabilityData->capability );
+        Cleanup();
+    }
+}
+
+
+#define NUM_CAPABILITES 60
+
+void VirtualizedCapabilitiesTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysContext, CAPABILITY_TEST_EXPECTED_RESULT expectedResultStruct[] )
+{
+    unsigned int i, j;
+    TPMS_CAPABILITY_DATA capabilityData;
+    TPMI_YES_NO         moreData;
+
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+
+    TSS2_SYS_CMD_AUTHS sessionsData;
+    TSS2_SYS_RSP_AUTHS sessionsDataOut;
+
+    TPMS_AUTH_COMMAND sessionData;
+    TPMS_AUTH_RESPONSE sessionDataOut;
+
+    TPMS_AUTH_COMMAND *sessionDataArray[1];
+    TPMS_AUTH_RESPONSE *sessionDataOutArray[1];
+
+    UINT32 property;
+
+    sessionDataArray[0] = &sessionData;
+    sessionDataOutArray[0] = &sessionDataOut;
+
+    sessionsData.cmdAuths = &sessionDataArray[0];
+    sessionsDataOut.rspAuths = &sessionDataOutArray[0];
+
+    sessionsDataOut.rspAuthsCount = 1;
+
+    sessionsData.cmdAuthsCount = 1;
+
+    // Init nonce.
+    sessionsData.cmdAuths[0]->nonce.t.size = 0;
+
+    // init hmac
+    sessionsData.cmdAuths[0]->hmac.t.size = 0;
+
+    // NEED TO:
+    // Do TPM2_StartAuthSession, TPM2_LoadContext, TPM2_SaveContext, TPM2_Flush, and clear of a
+    // session's continue bit from multiple connections to setup test for TPM_PT_HR_LOADED and
+    // TPM_PT_HR_ACTIVE.
+    //
+
+    if( auditSession )
+    {
+        // Init authHandle
+        sessionsData.cmdAuths[0]->sessionHandle = auditSession->sessionHandle;
+
+        // Set audit bit in session attributes
+        *( (UINT8 *)((void *)&sessionsData.cmdAuths[0]->sessionAttributes ) ) = 0;
+        sessionsData.cmdAuths[0]->sessionAttributes.audit = 1;
+        sessionsData.cmdAuths[0]->sessionAttributes.continueSession = 1;
+    }
+
+    // Display properties.
+    DebugPrintf( NO_PREFIX,  "\nCapabilities:\n" );
+
+    for( i = 0; i < ( sizeof( capabilityTestSetups ) / sizeof( CAPABILITY_TEST_SETUP ) ); i++ )
+    {
+        if( auditSession )
+        {
+            // Roll nonces for command
+            RollNonces( auditSession, &sessionsData.cmdAuths[0]->nonce );
+
+            rval = Tss2_Sys_GetCapability_Prepare( sysContext,
+                    capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                    NUM_CAPABILITES );
+
+            if( rval == TSS2_RC_SUCCESS )
+            {
+                // Complete command authorization area, by computing
+                // HMAC and setting it in nvCmdAuths.
+                rval = ComputeCommandHmacs( sysContext,
+                        TPM_HT_NO_HANDLE, TPM_HT_NO_HANDLE, &sessionsData,
+                        TPM_RC_FAILURE );
+
+                if( rval == TSS2_RC_SUCCESS )
+                {
+                    rval = Tss2_Sys_GetCapability( sysContext, &sessionsData,
+                            capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                            NUM_CAPABILITES, &moreData, &capabilityData, &sessionsDataOut );
+
+                    // Roll nonces for response
+                    RollNonces( auditSession, &sessionsDataOut.rspAuths[0]->nonce );
+
+                    if( rval == TPM_RC_SUCCESS )
+                    {
+                        // If the command was successful, check the
+                        // response HMAC to make sure that the
+                        // response was received correctly.
+                        rval = CheckResponseHMACs( sysContext, rval,
+                                &sessionsData, TPM_HT_NO_HANDLE,
+                                TPM_HT_NO_HANDLE, &sessionsDataOut );
+                    }
+                }
+            }
+        }
+        else
+        {
+            rval = Tss2_Sys_GetCapability( sysContext, 0,
+                    capabilityTestSetups[i].capability, capabilityTestSetups[i].property,
+                    NUM_CAPABILITES, &moreData, &capabilityData, 0 );
+        }
+
+        CheckPassed( rval );
+
+        // Display properties.
+        DebugPrintf( NO_PREFIX, "\n%sAudit Session Test Results:\n", auditSession ? "" : "Non-" );
+        DebugPrintf( NO_PREFIX, "==============================\n", auditSession ? "" : "Non-" );
+
+        if( capabilityTestSetups[i].capability == TPM_CAP_HANDLES )
+        {
+            DebugPrintf( NO_PREFIX,  "%s/%8.8x: ", FindPropertyString( capabilityTestSetups[i].property ), capabilityTestSetups[i].property );
+            for( j = 0; j < capabilityData.data.handles.count; j++  )
+            {
+                DebugPrintf( NO_PREFIX,  "%8.8x%s", capabilityData.data.handles.handle[j], j == ( capabilityData.data.tpmProperties.count - 1 ) ? "" : ", "  );
+            }
+        }
+        else
+        {
+            for( j = 0; j < capabilityData.data.tpmProperties.count; j++  )
+            {
+                property = capabilityData.data.tpmProperties.tpmProperty[j].property;
+                DebugPrintf( NO_PREFIX,  "%s/%8.8x/%8.8x\n", FindPropertyString( property ), property, capabilityData.data.tpmProperties.tpmProperty[j].value );
+            }
+        }
+        DebugPrintf( NO_PREFIX,  "\n\n" );
+
+        if( !auditSession )
+        {
+            VerifyGetCapabilityTestResults( &capabilityData, expectedResultStruct );
+        }
+    }
+}
+
+void VirtualizedCapabilitiesTests()
+{
+    TPM2B_NONCE nonceCaller;
+    TPMT_SYM_DEF symmetric;
+    TSS2_RC rval = TSS2_RC_SUCCESS;
+    TSS2_TCTI_CONTEXT *otherResMgrTctiContext = 0;
+    TSS2_SYS_CONTEXT *otherSysContext;
+    char otherResMgrInterfaceName[] = "Other Resource Manager";
+    UINT32 i, numSessionsCreatedConnection1, numSessionsCreatedConnection2;
+    TPMS_CAPABILITY_DATA capabilityData;
+    UINT32 activeSessionsNumConnection1, activeSessionsNumConnection2;
+    TPMS_CONTEXT context;
+
+    DebugPrintf( NO_PREFIX,  "\nTEST VIRTUALIZED CAPABILITIES:\n" );
+
+    rval = InitTctiResMgrContext( &rmInterfaceConfig, &otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    if( rval != TSS2_RC_SUCCESS )
+    {
+        DebugPrintf( NO_PREFIX, "Resource Mgr, %s, failed initialization: 0x%x.  Exiting...\n", otherResMgrInterfaceName, rval );
+        Cleanup();
+        return;
+    }
+    else
+    {
+        (( TSS2_TCTI_CONTEXT_INTEL *)otherResMgrTctiContext )->status.debugMsgLevel = debugLevel;
+    }
+
+    otherSysContext = InitSysContext( 0, otherResMgrTctiContext, &abiVersion );
+    if( otherSysContext == 0 )
+    {
+        InitSysContextFailure();
+    }
+
+    // Create audit session.
+    symmetric.algorithm = TPM_ALG_NULL;
+    symmetric.keyBits.sym = 0;
+    symmetric.mode.sym = 0;
+    nonceCaller.t.size = 0;
+
+    //
+    // Setup sessions for first connection.
+    //
+    rval = Tss2_Sys_GetCapability( sysContext, 0,
+            TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
+            1, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+    capabilityTestResultsNoAuditConnection1[1].resultsArrayCount = activeSessionsNumConnection1 = capabilityData.data.tpmProperties.tpmProperty[0].value;
+
+    rval = Tss2_Sys_GetCapability( sysContext, 0,
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
+            40, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+
+    // Now copy currently loaded sessions into results array;
+    for( i = 0; i < capabilityData.data.handles.count; i++ )
+        noAuditLoadedSessionConn1[i] = capabilityData.data.handles.handle[i];
+
+    // Start sessions for first connection.
+    // For this connection, try to create more sessions than allowed.  This will test the
+    // RM's logic for limiting the number of sessions created.
+    for( i = 0, numSessionsCreatedConnection1 = 0; i < CONNECTION1_SESSIONS; i++ )
+    {
+        rval = StartAuthSessionWithParams( &auditSessionsConnection1[numSessionsCreatedConnection1], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, resMgrTctiContext );
+        if( ( activeSessionsNumConnection1 + i ) >= RM_LOADED_MIN )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            noAuditLoadedSessionConn1[activeSessionsNumConnection1 + numSessionsCreatedConnection1] = auditSessionsConnection1[numSessionsCreatedConnection1]->sessionHandle;
+            capabilityTestResultsNoAuditConnection1[1].resultsArrayCount++;
+            numSessionsCreatedConnection1++;
+        }
+    }
+
+    // Context save one of the sessions, so that we see diff between LOADED and ACTIVE.
+    rval = Tss2_Sys_ContextSave( sysContext, auditSessionsConnection1[numSessionsCreatedConnection1-1]->sessionHandle, &context );
+    CheckPassed( rval );
+
+    // Need to create transient objects here, too.
+    for( i = 0; i < CONNECTION1_OBJECTS; i++ )
+    {
+        rval = CreatePrimaryObject( sysContext, &noAuditTransientObjectConn1[i] );
+        if( i >= RM_TRANSIENT_MIN )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            capabilityTestResultsNoAuditConnection1[0].resultsArrayCount++;
+        }
+    }
+
+    // Need to flush two transient objects, so that HMAC generation functions for audit sessions can load a key and start an HMAC sequence.
+    rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientObjectConn1[ capabilityTestResultsNoAuditConnection1[0].resultsArrayCount - 1 ] );
+    CheckPassed( rval );
+    capabilityTestResultsNoAuditConnection1[0].resultsArrayCount--;
+
+    rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientObjectConn1[ capabilityTestResultsNoAuditConnection1[0].resultsArrayCount - 1 ] );
+    CheckPassed( rval );
+    capabilityTestResultsNoAuditConnection1[0].resultsArrayCount--;
+
+    //
+    // Setup sessions for other connection.
+    //
+    rval = Tss2_Sys_GetCapability( otherSysContext, 0,
+            TPM_CAP_TPM_PROPERTIES, TPM_PT_HR_ACTIVE,
+            1, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+
+	capabilityTestResultsNoAuditConnection2[1].resultsArrayCount = activeSessionsNumConnection2 = capabilityData.data.tpmProperties.tpmProperty[0].value;
+
+    rval = Tss2_Sys_GetCapability( otherSysContext, 0,
+            TPM_CAP_HANDLES, TPM_HT_LOADED_SESSION << HR_SHIFT,
+            40, 0, &capabilityData, 0 );
+    CheckPassed( rval );
+
+    // Now copy currently loaded sessions into results array;
+    for( i = 0; i < capabilityData.data.handles.count; i++ )
+        noAuditLoadedSessionConn2[i] = capabilityData.data.handles.handle[i];
+
+    // Start sessions for second connection.
+    // For this connection, create less sessions than allowed.  This will help us
+    // make sure that capabilities like ACTIVE_AVAIL are working right.
+    for( i = 0, numSessionsCreatedConnection2 = 0; i < CONNECTION2_SESSIONS; i++ )
+    {
+        rval = StartAuthSessionWithParams( &auditSessionsConnection2[numSessionsCreatedConnection2], TPM_RH_NULL, 0, TPM_RH_NULL, 0, &nonceCaller, 0, TPM_SE_HMAC, &symmetric, TPM_ALG_SHA256, otherResMgrTctiContext );
+        if( ( activeSessionsNumConnection2 + i ) >= RM_LOADED_MIN )
+        {
+            CheckFailed( rval, TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            noAuditLoadedSessionConn2[activeSessionsNumConnection2 + numSessionsCreatedConnection2] = auditSessionsConnection2[numSessionsCreatedConnection2]->sessionHandle;
+            capabilityTestResultsNoAuditConnection2[1].resultsArrayCount++;
+            numSessionsCreatedConnection2++;
+        }
+    }
+
+    // Context save one of the sessions, and then reload it, so that we know handling for LOADED for ContextLoad is working right.
+    rval = Tss2_Sys_ContextSave( otherSysContext, auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle, &context );
+    CheckPassed( rval );
+
+    rval = Tss2_Sys_ContextLoad( otherSysContext, &context, &( auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle ) );
+    CheckPassed( rval );
+    noAuditLoadedSessionConn2[CONNECTION2_SESSIONS-1] = auditSessionsConnection2[CONNECTION2_SESSIONS-1]->sessionHandle;
+
+    // Need to create transient objects here, too.
+    for( i = 0; i < CONNECTION2_OBJECTS; i++ )
+    {
+        rval = CreatePrimaryObject( otherSysContext, &noAuditTransientObjectConn2[i] );
+        if( i >= RM_TRANSIENT_MIN )
+        {
+            // We're over the per-connection limit, so we should get this error.
+            CheckFailed( rval, TPM_RC_OBJECT_MEMORY | TSS2_RESMGRTPM_ERROR_LEVEL );
+        }
+        else
+        {
+            CheckPassed( rval );
+            capabilityTestResultsNoAuditConnection2[0].resultsArrayCount++;
+        }
+    }
+
+    //
+    // First test that GetCapabilities commands using an audit session work.  This isn't actually a test for
+    // capabilities virtualization, but tests a case for HMAC generation when a command doesn't take any
+    // authorization handles.
+    //
+    VirtualizedCapabilitiesTest( auditSessionsConnection1[0], sysContext, capabilityTestResultsNoAuditConnection1 );
+
+    //
+    // Now do two non-audit session tests for get capability commands.  These both test capability virtualization.
+    //
+    VirtualizedCapabilitiesTest( 0, sysContext, capabilityTestResultsNoAuditConnection1 );
+
+    VirtualizedCapabilitiesTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection2 );
+
+    //
+    // Now kill connection 2 and retest capabilities--should be nothing in RM tables.
+    //
+    rval = TeardownTctiResMgrContext( otherResMgrTctiContext );
+    CheckPassed( rval );
+
+    TeardownSysContext( &otherSysContext );
+
+    //
+    // Since we killed the 2nd connection, clear session table so that we're not using
+    // stale data, i.e. session state associated with old session handles.  If newly
+    // created handles are the same as old ones (and they will be due to virtualization of
+    // session handles), you'll get stale session state info if this table isn't cleared,
+    // resulting in bad HMAC generation when the audit session is used to get the
+    // capabilities.
+    //
+    for( i = 0; i < numSessionsCreatedConnection2; i++ )
+    {
+        rval = EndAuthSession( auditSessionsConnection2[i] );
+    }
+
+    rval = InitTctiResMgrContext( &rmInterfaceConfig, &otherResMgrTctiContext, &otherResMgrInterfaceName[0] );
+    if( rval != TSS2_RC_SUCCESS )
+    {
+        DebugPrintf( NO_PREFIX, "Resource Mgr, %s, failed initialization: 0x%x.  Exiting...\n", otherResMgrInterfaceName, rval );
+        Cleanup();
+        return;
+    }
+    else
+    {
+        (( TSS2_TCTI_CONTEXT_INTEL *)otherResMgrTctiContext )->status.debugMsgLevel = debugLevel;
+    }
+
+    otherSysContext = InitSysContext( 0, otherResMgrTctiContext, &abiVersion );
+    if( otherSysContext == 0 )
+    {
+        InitSysContextFailure();
+    }
+
+    //
+    // Now get the capabilities and test them for the new connection.
+    //
+    VirtualizedCapabilitiesTest( 0, otherSysContext, capabilityTestResultsNoAuditConnection3 );
+
+    rval = TeardownTctiResMgrContext( otherResMgrTctiContext );
+    CheckPassed( rval );
+
+    for( i = 0; i < numSessionsCreatedConnection1; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection1[i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection1[i] );
+    }
+
+    for( i = 0; i < numSessionsCreatedConnection2; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, auditSessionsConnection2[activeSessionsNumConnection2 + i]->sessionHandle );
+        rval = EndAuthSession( auditSessionsConnection2[activeSessionsNumConnection2 + i] );
+    }
+
+    for( i = 0; i < capabilityTestResultsNoAuditConnection1[0].resultsArrayCount; i++ )
+    {
+        rval = Tss2_Sys_FlushContext( sysContext, noAuditTransientObjectConn1[i] );
+    }
+
+    TeardownSysContext( &otherSysContext );
+
+}
 
 void TpmTest()
 {
@@ -7229,6 +8002,8 @@ void TpmTest()
 
     // Clear DA lockout.
     TestDictionaryAttackLockReset();
+
+    VirtualizedCapabilitiesTests();
 
     TestTpmSelftest();
 
