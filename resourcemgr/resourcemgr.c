@@ -262,7 +262,7 @@ typedef struct RESOURCE_MANAGER_ENTRY_STRUCT {
                                     // is persistent or not.
         UINT16 aploaded : 1;        // Indicates whether this entry's context is loaded
                                     // into the TPM or not from the calling connection's
-                                    // viewpoint.  
+                                    // viewpoint.
     } status;
     TPM_HANDLE virtualHandle;       // For transient objects and sequences, this is the virtual
                                     //  handle.
@@ -894,13 +894,12 @@ TSS2_RC FlushSessionsAndClearTable( UINT64 connectionId )
                 SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
                 break;
             }
-        }        
+        }
         else
         {
             entryPtr = entryPtr->nextEntry;
-        }        
+        }
     }
-
     return rval;
 }
 
@@ -1521,7 +1520,7 @@ TSS2_RC ResourceMgrSendTpmCommand(
                 responseRval = TPM_RC_SESSION_HANDLES | TSS2_RESMGRTPM_ERROR_LEVEL;
                 goto SendCommand;
             }
-            
+
             // This command must always pass, so if we already have
             // maxActiveSessions, oldest one will need to be evicted.
             if( activeSessionCount >= maxActiveSessions )
@@ -1933,7 +1932,7 @@ TSS2_RC VirtualizeCapHandles( TPMS_CAPABILITY_DATA *receivedCapabilityData, TPM_
 
     if( rval == TSS2_RESMGR_FIND_FAILED )
         rval = TSS2_RC_SUCCESS;
-    
+
     return rval;
 }
 
@@ -1945,7 +1944,6 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
     UINT32 newValue;
 	TPMS_CAPABILITY_DATA capabilityData;
 
-    
     if( receivedCapabilityData->capability == TPM_CAP_HANDLES )
     {
         rval = VirtualizeCapHandles( receivedCapabilityData, savedProperty, connectionId );
@@ -2049,7 +2047,7 @@ TSS2_RC VirtualizeCapStructure( TPMS_CAPABILITY_DATA *receivedCapabilityData, UI
                 break;
         }
     }
-    
+
     return rval;
 }
 
@@ -2057,7 +2055,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
 {
 	UINT32 i, newResponseSize;
     TSS2_RC rval = TSS2_RC_SUCCESS;
-    
+
     // This is the capability data received from the TPM.
     TPMS_CAPABILITY_DATA	receivedCapabilityData;
 
@@ -2069,7 +2067,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
     // size, ease of auto code-generation, etc, so they use the sys context for lots of bookkeeping.
     // To avoid rewriting the marshal/unmarshal functions for capability data, we do lots of
     // weird things here.  This structure is too complex to create macros like we did for TPMS_CONTEXT.
-      
+
     // Copy info into tempSysContext.
     if( ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->maxResponseSize >= *response_size )
     {
@@ -2084,20 +2082,20 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
         rval = TSS2_BASE_RC_INSUFFICIENT_BUFFER;
 		goto exitVirtualizeCapabilities;
     }
-    
+
     Unmarshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
     rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
     if( rval != TSS2_RC_SUCCESS )
 		goto exitVirtualizeCapabilities;
-   
+
     // Go through returned capabilities and virtualize anything that needs to be virtualized.
     rval = VirtualizeCapStructure( &receivedCapabilityData, cmdConnectionId );
     if( rval != TSS2_RC_SUCCESS )
         goto exitVirtualizeCapabilities;
-    
+
     // Reset nextData pointer.
     ( (_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->nextData = ((_TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr + sizeof( TPM20_Header_Out );
-    
+
     Marshal_TPMS_CAPABILITY_DATA( tempSysContext, &receivedCapabilityData );
     rval = (( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->rval ;
     if( rval != TSS2_RC_SUCCESS )
@@ -2111,7 +2109,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
 
         // Update response's size.
         ( ( TPM20_Header_Out * )( ( ( _TSS2_SYS_CONTEXT_BLOB *)tempSysContext )->tpmOutBuffPtr ) )->responseSize = CHANGE_ENDIAN_DWORD( newResponseSize );
-        
+
         // Stick new capability data into returned response.
         for( i = 0; i < newResponseSize; i++ )
         {
@@ -2123,7 +2121,7 @@ TSS2_RC VirtualizeCapabilities( uint8_t *response_buffer, UINT32 *response_size,
         rval = TSS2_BASE_RC_INSUFFICIENT_BUFFER;
 		goto exitVirtualizeCapabilities;
     }
-    
+
 exitVirtualizeCapabilities:
     if( rval != TSS2_RC_SUCCESS )
         SetRmErrorLevel( &rval, TSS2_RESMGR_ERROR_LEVEL );
@@ -2723,7 +2721,7 @@ UINT8 TpmCmdServer( SERVER_STRUCT *serverStruct )
     UINT8 criticalSectionEntered;
 
     strcpy( &functionString[0], MUTEX_DBG_FUNCTION_STR );
-    
+
     for(;;)
     {
         criticalSectionEntered = 0;
@@ -2922,7 +2920,6 @@ tpmCmdServerDone:
     {
         // CRITICAL SECTION STARTS HERE.
         rval = StartCriticalSection( &tpmMutex, &functionString[0] );
-
         if( rval == TSS2_RC_SUCCESS )
         {
             criticalSectionEntered = 1;
@@ -3593,10 +3590,10 @@ int main(int argc, char* argv[])
     {
         DebugPrintf( NO_PREFIX, "Resource Mgr failed to create mutex, error #%d.  Exiting...\n", rval );
         return( 1 );
-    }        
+    }
 #else
-    #error Unsupported OS--need to add OS-specific support for threading here.        
-#endif        
+    #error Unsupported OS--need to add OS-specific support for threading here.
+#endif
 
     rval = InitResourceMgr( DBG_COMMAND_RM_TABLES );
     if( rval != TSS2_RC_SUCCESS )
@@ -3659,7 +3656,7 @@ int main(int argc, char* argv[])
     TeardownSysContext( &resMgrSysContext );
     
     TeardownSysContext( &tempSysContext );
-        
+
 initDone:
 
     return 0;

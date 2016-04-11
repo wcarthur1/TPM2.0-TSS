@@ -7128,7 +7128,6 @@ void TestCreate1()
 TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHandle )
 {
     TSS2_RC rval = TSS2_RC_SUCCESS;
-
     TPM2B_SENSITIVE_CREATE  inSensitive = { { sizeof( TPM2B_SENSITIVE_CREATE ) - 2, } };
     TPM2B_DATA              outsideInfo = { { sizeof( TPM2B_DATA ) - 2, } };
     TPML_PCR_SELECTION      creationPCR;
@@ -7154,7 +7153,6 @@ TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHan
     sessionsData.cmdAuths = &sessionDataArray[0];
 
     sessionsDataOut.rspAuthsCount = 1;
-
     sessionData.sessionHandle = TPM_RS_PW;
 
     // Init nonce.
@@ -7173,7 +7171,6 @@ TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHan
     inSensitive.t.sensitive.userAuth = loadedSha1KeyAuth;
     inSensitive.t.sensitive.data.t.size = 0;
     inSensitive.t.size = loadedSha1KeyAuth.b.size + 2;
-
     inPublic.t.publicArea.type = TPM_ALG_RSA;
     inPublic.t.publicArea.nameAlg = TPM_ALG_SHA1;
 
@@ -7187,7 +7184,6 @@ TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHan
     inPublic.t.publicArea.objectAttributes.sensitiveDataOrigin = 1;
 
     inPublic.t.publicArea.authPolicy.t.size = 0;
-
     inPublic.t.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
     inPublic.t.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
     inPublic.t.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_ECB;
@@ -7199,7 +7195,6 @@ TSS2_RC CreatePrimaryObject( TSS2_SYS_CONTEXT *sysContext, TPM_HANDLE *objectHan
 
     outsideInfo.t.size = 0;
     creationPCR.count = 0;
-
     inPublic.t.publicArea.parameters.rsaDetail.keyBits = 2048;
 
     outPublic.t.size = 0;
@@ -7492,7 +7487,7 @@ void VerifyGetCapabilityTestResults( TPMS_CAPABILITY_DATA *capabilityData, CAPAB
 	TSS2_RC rval = TSS2_RC_SUCCESS;
     UINT32 actualResults[20];
 	int matchFound = 0;
-    
+
     if( capabilityData->capability == TPM_CAP_HANDLES )
     {
         rval = FindExpectedResult( resultsArray, capabilityData->data.handles.handle[0] & ~HR_HANDLE_MASK, &expectedResultStruct );
@@ -7586,6 +7581,8 @@ void VirtualizedCapabilitiesTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysCo
 
     sessionsData.cmdAuthsCount = 1;
 
+	sessionsData.cmdAuthsCount = 1;
+
     // Init nonce.
     sessionsData.cmdAuths[0]->nonce.t.size = 0;
 
@@ -7597,7 +7594,6 @@ void VirtualizedCapabilitiesTest( SESSION *auditSession, TSS2_SYS_CONTEXT *sysCo
     // session's continue bit from multiple connections to setup test for TPM_PT_HR_LOADED and
     // TPM_PT_HR_ACTIVE.
     //
-
     if( auditSession )
     {
         // Init authHandle
@@ -7775,6 +7771,7 @@ void VirtualizedCapabilitiesTests()
     for( i = 0; i < CONNECTION1_OBJECTS; i++ )
     {
         rval = CreatePrimaryObject( sysContext, &noAuditTransientObjectConn1[i] );
+
         if( i >= RM_TRANSIENT_MIN )
         {
             // We're over the per-connection limit, so we should get this error.
@@ -7937,7 +7934,6 @@ void VirtualizedCapabilitiesTests()
     }
 
     TeardownSysContext( &otherSysContext );
-
 }
 
 void TpmTest()

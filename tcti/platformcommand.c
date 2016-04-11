@@ -57,7 +57,7 @@ TSS2_RC PlatformCommand(
     char sendbuf[] = { 0x0,0x0,0x0,0x0 };
     char recvbuf[] = { 0x0, 0x0, 0x0, 0x0 };
     TSS2_RC rval = TSS2_RC_SUCCESS;
-    
+
     sendbuf[3] = cmd;
 
     // Send the command
