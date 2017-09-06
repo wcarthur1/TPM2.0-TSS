@@ -197,7 +197,7 @@ TPM_RC CompareTPM2B( TPM2B *buffer1, TPM2B *buffer2 )
         return TPM_RC_FAILURE;
     for( i = 0; i < buffer1->size; i++ )
     {
-        if( buffer1->buffer[0] != buffer2->buffer[0] )
+        if( buffer1->buffer[i] != buffer2->buffer[i] )
             return TPM_RC_FAILURE;
     }
     return TPM_RC_SUCCESS;
